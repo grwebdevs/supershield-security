@@ -1,0 +1,13 @@
+# BEGIN SuperShield Security — Uploads PHP Lockdown
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(?i)\.(php|phtml|php3|php4|php5|php7|phps|phar)$">
+        Order Deny,Allow
+        Deny from all
+    </FilesMatch>
+</IfModule>
+<IfModule mod_authz_core.c>
+    <FilesMatch "(?i)\.(php|phtml|php3|php4|php5|php7|phps|phar)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+# END SuperShield Security

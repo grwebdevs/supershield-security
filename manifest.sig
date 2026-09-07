@@ -1,0 +1,21 @@
+{
+    "supershield-security.php": "22083dfbdf954301e6e874238f21db1cd9562a9e41797428b49a1ad1f450a35e",
+    "includes\/class-supershield-core.php": "a93d509f125362c3b5cb209a85adf99b9ac1cd7f3239ed8bb046604214af15c0",
+    "includes\/class-supershield-activator.php": "eb01f5b2b761d46fd07e167f3a889f71b5a2f4e5a58d2709a6a3f240371210bf",
+    "includes\/class-supershield-deactivator.php": "87a6f99727573b408bc82b88497fe9123bf6e7932ff009c45ab20e7d4e333ca0",
+    "includes\/class-supershield-waf.php": "637bb1457101adcd42d14c96dee9c2cc130e7ec56483cd94ffdb115a8546f588",
+    "includes\/class-supershield-scanner.php": "ecdfc3344ee9df8bdb09cb98c6575d77d75314ed7b2131ed1d772eea8c477d6b",
+    "includes\/class-supershield-cleaner.php": "c7dbb8001ebbb807bdb22f36d497741660bdc56dbf3c2db3ee9d8992c293d91f",
+    "includes\/class-supershield-geoip.php": "f94428c13a47eb5dfc08a1b63c40d77d678c8e612aba57bd3376e4792b2d4fb4",
+    "includes\/class-supershield-2fa.php": "489a98ea34125619e8703e4daf9d6c58501c8a8aacd29a371738af49be1d813a",
+    "includes\/class-supershield-qrcode.php": "f61b83f96e7bab2f3fee7b82706d37a05339f79f17850fc88c698d1479668289",
+    "includes\/class-supershield-login-security.php": "fb321d19b3d77d1f8732585c11d447e3ff62f3458fa22d09cb332edc1d978861",
+    "includes\/class-supershield-hardening.php": "170d9efca5a9b97f4e91216c36e239b29430b77ddbaadd386ed19649d3375c32",
+    "includes\/class-supershield-ip-manager.php": "4e61a863d0348233a6e7bc60a7424546f99426fd177bc23be406fa6053c6af3f",
+    "includes\/class-supershield-antitamper.php": "68f6984ca039c91dbb6e3b382e56011acf70282c1a7d17e572f24ec9d4ea3def",
+    "includes\/class-supershield-db.php": "a9e8d46b33b9ebe2bfaa7b9031f4e50149f64587c447826560a3f20d50dd2928",
+    "includes\/class-supershield-utils.php": "ee8818ac5ad1bbe248c0c63c7f88ce636ceb37cd5c0248d1dd5384c2f3f84eba",
+    "includes\/class-supershield-updater.php": "59d349cfeaef81ad20b8e5b4e011168cf31e2fdef8ba9de8a1a4161962a827a8",
+    "includes\/class-supershield-telemetry.php": "5a6d0aef8115e57e46071b0c7b279302c3818a773d267c61e8dd822ee868ae81",
+    "admin\/class-supershield-admin.php": "95ee32ff894cb2f0a0c957115611880b7e8ae28c0d20a7aafcbfb52ebb96cf0c"
+}
