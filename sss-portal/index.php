@@ -4,7 +4,7 @@
  * 
  * Aesthetic Thesis: Hyper-Defense Glass & Machined Hardware
  * Lead Architect: Ghulam Rasool (grwebdevs.com)
- * Version: 2.5.0
+ * Version: 2.2.1
  */
 
 define('SSS_ACCESS', true);

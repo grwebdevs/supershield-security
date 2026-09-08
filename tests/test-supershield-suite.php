@@ -1109,6 +1109,9 @@ SuperShield_Utils::update_option( 'daily_scan_cron_enabled', 0 );
 SuperShield_Scanner::sync_cron_schedule();
 assert_test( ! wp_next_scheduled( 'supershield_daily_scan_cron' ), 'sync_cron_schedule successfully clears supershield_daily_scan_cron event when disabled' );
 
+// 14.7 Settings Retrieval Helper
+assert_test( is_array( SuperShield_Utils::get_settings() ), 'SuperShield_Utils::get_settings returns valid array' );
+
 // --- 15. Clean up temporary test files ---
 @unlink( $infected_file );
 @unlink( $tmp_uploads . '/shell.php' );

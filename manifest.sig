@@ -14,7 +14,7 @@
     "includes\/class-supershield-ip-manager.php": "4e61a863d0348233a6e7bc60a7424546f99426fd177bc23be406fa6053c6af3f",
     "includes\/class-supershield-antitamper.php": "6a74dbcd4b1daa393ea3771b1d80234d6b8c9a24a0746c65530a3accc5bb792a",
     "includes\/class-supershield-db.php": "1465fbf743113d4537a92efdf0e7bb2c346757581e9cc909e892ab97f0132235",
-    "includes\/class-supershield-utils.php": "8358bbc5d9187a16170448539e069c080040b478a1779543f986e6f1b6a58e0c",
+    "includes\/class-supershield-utils.php": "159bf12d3b1f6bf8623ca8ac79a7ee30c56e5f39fffe4eedcc79e92fbff00280",
     "includes\/class-supershield-updater.php": "396c2dfe054f45530d9d37497ad69972c15ff6b7a065dc8234064d1566e755b9",
     "includes\/class-supershield-telemetry.php": "5a6d0aef8115e57e46071b0c7b279302c3818a773d267c61e8dd822ee868ae81",
     "includes\/class-supershield-notifier.php": "98bc6fde277b2756ef8faf565afb4302261a57d73aefcc3181edb82594b838b2",

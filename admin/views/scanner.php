@@ -16,7 +16,7 @@ global $wpdb;
 $issues_table = SuperShield_DB::get_scan_issues_table();
 $active_issues = $wpdb->get_results( "SELECT * FROM $issues_table WHERE status = 'active' ORDER BY severity DESC, created_at DESC" );
 $last_results = SuperShield_Utils::get_option( 'last_scan_results', array( 'scanned_files' => 0, 'threats_found' => 0, 'duration' => 0 ) );
-$settings = SuperShield_Utils::get_settings();
+$settings = get_option( 'supershield_settings', array() );
 
 $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-shield-primary"><span class="dashicons dashicons-search" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Run Full Deep Scan</button>';
 ?>

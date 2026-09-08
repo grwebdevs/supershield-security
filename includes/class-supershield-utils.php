@@ -229,6 +229,16 @@ class SuperShield_Utils {
 	}
 
 	/**
+	 * Retrieve all plugin settings array.
+	 *
+	 * @return array
+	 */
+	public static function get_settings() {
+		$options = get_option( 'supershield_settings', array() );
+		return is_array( $options ) ? $options : array();
+	}
+
+	/**
 	 * Update single setting key.
 	 *
 	 * @param string $key Option key.
