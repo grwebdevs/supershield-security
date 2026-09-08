@@ -13,65 +13,157 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SuperShield_Scanner {
 
 	/**
+	 * Run a specific stage of the scan for chunked/staged execution.
+	 *
+	 * Stages:
+	 *   - 'init'       => Purge false positives, reset run IDs, initialize state
+	 *   - 'core'       => Scan official WordPress.org core checksums diff
+	 *   - 'droppers'   => Scan stealth dot-droppers, root droppers & worm staging
+	 *   - 'uploads'    => Scan media uploads directory for unauthorized PHP
+	 *   - 'signatures' => Scan plugins, themes & mu-plugins for heuristic malware signatures
+	 *   - 'database'   => Audit database for rogue admins & encrypted serialized payloads
+	 *   - 'finalize'   => Synchronize resolved issues, update options, dispatch notifications
+	 *
+	 * @param string $stage Scan stage key.
+	 * @param array  $state Accumulator state between stages.
+	 * @return array Stage execution results with progress and next stage.
+	 */
+	public static function run_scan_stage( $stage, $state = array() ) {
+		// Lift memory and time limits for intensive forensic scan
+		if ( function_exists( 'ini_set' ) ) {
+			@ini_set( 'memory_limit', '512M' );
+		}
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 300 );
+		}
+
+		if ( ! is_array( $state ) ) {
+			$state = array();
+		}
+		if ( ! isset( $state['scanned_files'] ) ) {
+			$state['scanned_files'] = 0;
+		}
+		if ( ! isset( $state['threats_found'] ) ) {
+			$state['threats_found'] = 0;
+		}
+		if ( ! isset( $state['issues'] ) || ! is_array( $state['issues'] ) ) {
+			$state['issues'] = array();
+		}
+		if ( ! isset( $state['start_time'] ) ) {
+			$state['start_time'] = microtime( true );
+		}
+
+		$response = array(
+			'current_stage' => $stage,
+			'next_stage'    => '',
+			'progress'      => 0,
+			'message'       => '',
+			'state'         => $state,
+			'is_complete'   => false,
+		);
+
+		switch ( $stage ) {
+			case 'init':
+				SuperShield_DB::reset_scan_run_ids();
+				SuperShield_DB::purge_false_positives();
+				$response['next_stage']  = 'core';
+				$response['progress']    = 15;
+				$response['message']     = 'Scanner engine initialized. Verifying WordPress core integrity against official checksums...';
+				break;
+
+			case 'core':
+				self::scan_core_checksums_diff( $state );
+				$response['next_stage']  = 'droppers';
+				$response['progress']    = 35;
+				$response['message']     = 'Core integrity verified. Hunting hidden dot-droppers, 8-hex droppers & worm staging artifacts...';
+				break;
+
+			case 'droppers':
+				self::scan_filesystem_artifacts( $state );
+				$response['next_stage']  = 'uploads';
+				$response['progress']    = 55;
+				$response['message']     = 'Filesystem droppers analyzed. Inspecting media uploads directory for unauthorized PHP scripts...';
+				break;
+
+			case 'uploads':
+				self::scan_uploads_folder( $state );
+				$response['next_stage']  = 'signatures';
+				$response['progress']    = 75;
+				$response['message']     = 'Media uploads verified. Scanning plugins, themes & mu-plugins for heuristic malware signatures...';
+				break;
+
+			case 'signatures':
+				self::scan_php_code_signatures( $state );
+				$response['next_stage']  = 'database';
+				$response['progress']    = 90;
+				$response['message']     = 'Code signatures checked. Auditing database for rogue administrators & encrypted options...';
+				break;
+
+			case 'database':
+				self::scan_database_threats( $state );
+				$response['next_stage']  = 'finalize';
+				$response['progress']    = 96;
+				$response['message']     = 'Database security audit complete. Synchronizing threat records and finalizing report...';
+				break;
+
+			case 'finalize':
+				// Synchronize database issues: mark issues not found in this scan as resolved/cleaned
+				global $wpdb;
+				$table = SuperShield_DB::get_scan_issues_table();
+				$saved_ids = SuperShield_DB::get_current_run_saved_ids();
+				if ( ! empty( $saved_ids ) ) {
+					$ids_placeholder = implode( ',', array_map( 'intval', $saved_ids ) );
+					$wpdb->query( "UPDATE $table SET status = 'cleaned', updated_at = '" . current_time( 'mysql' ) . "' WHERE status = 'active' AND id NOT IN ($ids_placeholder)" );
+				} else {
+					$wpdb->query( "UPDATE $table SET status = 'cleaned', updated_at = '" . current_time( 'mysql' ) . "' WHERE status = 'active'" );
+				}
+
+				$state['end_time'] = microtime( true );
+				$state['duration'] = round( $state['end_time'] - $state['start_time'], 2 );
+
+				SuperShield_Utils::update_option( 'last_scan_time', current_time( 'mysql' ) );
+				SuperShield_Utils::update_option( 'last_scan_results', array(
+					'scanned_files' => $state['scanned_files'],
+					'threats_found' => $state['threats_found'],
+					'duration'      => $state['duration'],
+				) );
+
+				if ( ! empty( $state['threats_found'] ) && $state['threats_found'] > 0 ) {
+					if ( class_exists( 'SuperShield_Notifier' ) ) {
+						SuperShield_Notifier::notify_malware_detected( $state['issues'] );
+					}
+				}
+
+				$response['next_stage']  = 'done';
+				$response['progress']    = 100;
+				$response['message']     = "Scan completed in {$state['duration']}s. Analyzed {$state['scanned_files']} files, identified {$state['threats_found']} threat(s).";
+				$response['is_complete'] = true;
+				break;
+
+			default:
+				$response['next_stage']  = 'done';
+				$response['progress']    = 100;
+				$response['is_complete'] = true;
+				break;
+		}
+
+		$response['state'] = $state;
+		return $response;
+	}
+
+	/**
 	 * Run a full multi-tier malware and integrity scan.
 	 *
 	 * @return array Scan results summary.
 	 */
 	public static function run_full_scan() {
-		SuperShield_DB::reset_scan_run_ids();
-		SuperShield_DB::purge_false_positives();
-
-		$results = array(
-			'scanned_files' => 0,
-			'threats_found' => 0,
-			'issues'        => array(),
-			'start_time'    => microtime( true ),
-		);
-
-		// Tier 0: WordPress Core Integrity Diff via official WordPress.org checksums
-		self::scan_core_checksums_diff( $results );
-
-		// Tier 1: Scan for hidden dot droppers, 8-hex scripts, and worm staging artifacts
-		self::scan_filesystem_artifacts( $results );
-
-		// Tier 2: Scan uploads folder for any illegal PHP scripts
-		self::scan_uploads_folder( $results );
-
-		// Tier 3: Scan code signatures in mu-plugins, active theme, and plugins
-		self::scan_php_code_signatures( $results );
-
-		// Tier 4: Scan database for rogue administrators and bloated encrypted options
-		self::scan_database_threats( $results );
-
-		// Synchronize database issues: mark issues not found in this scan as resolved/cleaned
-		global $wpdb;
-		$table = SuperShield_DB::get_scan_issues_table();
-		$saved_ids = SuperShield_DB::get_current_run_saved_ids();
-		if ( ! empty( $saved_ids ) ) {
-			$ids_placeholder = implode( ',', array_map( 'intval', $saved_ids ) );
-			$wpdb->query( "UPDATE $table SET status = 'cleaned', updated_at = '" . current_time( 'mysql' ) . "' WHERE status = 'active' AND id NOT IN ($ids_placeholder)" );
-		} else {
-			$wpdb->query( "UPDATE $table SET status = 'cleaned', updated_at = '" . current_time( 'mysql' ) . "' WHERE status = 'active'" );
+		$stages = array( 'init', 'core', 'droppers', 'uploads', 'signatures', 'database', 'finalize' );
+		$state  = array();
+		foreach ( $stages as $stage ) {
+			$res   = self::run_scan_stage( $stage, $state );
+			$state = $res['state'];
 		}
-
-		// Record scan completion in settings
-		$results['end_time'] = microtime( true );
-		$results['duration'] = round( $results['end_time'] - $results['start_time'], 2 );
-
-		SuperShield_Utils::update_option( 'last_scan_time', current_time( 'mysql' ) );
-		SuperShield_Utils::update_option( 'last_scan_results', array(
-			'scanned_files' => $results['scanned_files'],
-			'threats_found' => $results['threats_found'],
-			'duration'      => $results['duration'],
-		) );
-
-		if ( ! empty( $results['threats_found'] ) && $results['threats_found'] > 0 ) {
-			if ( class_exists( 'SuperShield_Notifier' ) ) {
-				SuperShield_Notifier::notify_malware_detected( $results['issues'] );
-			}
-		}
-
-		return $results;
+		return $state;
 	}
 
 	/**
@@ -296,55 +388,62 @@ class SuperShield_Scanner {
 			return;
 		}
 
-		$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( $base_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::SELF_FIRST
-		);
+		try {
+			$dir_it = new RecursiveDirectoryIterator( $base_dir, FilesystemIterator::SKIP_DOTS | FilesystemIterator::UNIX_PATHS );
+			$iterator = new RecursiveIteratorIterator( $dir_it, RecursiveIteratorIterator::SELF_FIRST, RecursiveIteratorIterator::CATCH_GET_CHILD );
 
-		foreach ( $iterator as $file ) {
-			if ( $file->isFile() ) {
-				$results['scanned_files']++;
-				$filename = $file->getFilename();
-				$ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+			foreach ( $iterator as $file ) {
+				try {
+					if ( $file->isFile() ) {
+						$results['scanned_files']++;
+						$filename = $file->getFilename();
+						$ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
 
-				// Check for illegal PHP or executable extensions
-				if ( in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'suspected' ), true ) ) {
-					$results['threats_found']++;
-					$issue = array(
-						'file'      => $file->getPathname(),
-						'type'      => 'uploads_php',
-						'severity'  => 'critical',
-						'details'   => 'Executable PHP script discovered inside media uploads directory',
-						'signature' => 'MALWARE:UploadsBackdoor.PHP',
-					);
-					$results['issues'][] = $issue;
-					SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
-				} elseif ( preg_match( '/\.(php|phtml)\.(jpg|jpeg|png|gif)$/i', $filename ) ) {
-					// Double extension exploit (e.g. shell.php.jpg)
-					$results['threats_found']++;
-					$issue = array(
-						'file'      => $file->getPathname(),
-						'type'      => 'double_extension',
-						'severity'  => 'critical',
-						'details'   => 'Double extension executable file discovered in media uploads directory',
-						'signature' => 'MALWARE:DoubleExtensionUpload',
-					);
-					$results['issues'][] = $issue;
-					SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
-				} elseif ( preg_match( '/^\..*\.php$/i', $filename ) ) {
-					// Hidden dot dropper nested in uploads subdirectories
-					$results['threats_found']++;
-					$issue = array(
-						'file'      => $file->getPathname(),
-						'type'      => 'dot_dropper',
-						'severity'  => 'critical',
-						'details'   => 'Hidden dot-dropper discovered in media uploads subdirectory',
-						'signature' => 'HEUR:StealthDotDropper',
-					);
-					$results['issues'][] = $issue;
-					SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
+						// Check for illegal PHP or executable extensions
+						if ( in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'suspected' ), true ) ) {
+							$results['threats_found']++;
+							$issue = array(
+								'file'      => $file->getPathname(),
+								'type'      => 'uploads_php',
+								'severity'  => 'critical',
+								'details'   => 'Executable PHP script discovered inside media uploads directory',
+								'signature' => 'MALWARE:UploadsBackdoor.PHP',
+							);
+							$results['issues'][] = $issue;
+							SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
+						} elseif ( preg_match( '/\.(php|phtml)\.(jpg|jpeg|png|gif)$/i', $filename ) ) {
+							// Double extension exploit (e.g. shell.php.jpg)
+							$results['threats_found']++;
+							$issue = array(
+								'file'      => $file->getPathname(),
+								'type'      => 'double_extension',
+								'severity'  => 'critical',
+								'details'   => 'Double extension executable file discovered in media uploads directory',
+								'signature' => 'MALWARE:DoubleExtensionUpload',
+							);
+							$results['issues'][] = $issue;
+							SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
+						} elseif ( preg_match( '/^\..*\.php$/i', $filename ) ) {
+							// Hidden dot dropper nested in uploads subdirectories
+							$results['threats_found']++;
+							$issue = array(
+								'file'      => $file->getPathname(),
+								'type'      => 'dot_dropper',
+								'severity'  => 'critical',
+								'details'   => 'Hidden dot-dropper discovered in media uploads subdirectory',
+								'signature' => 'HEUR:StealthDotDropper',
+							);
+							$results['issues'][] = $issue;
+							SuperShield_DB::save_scan_issue( $file->getPathname(), $issue['type'], $issue['severity'], $issue['details'], $issue['signature'] );
+						}
+					}
+				} catch ( Throwable $item_err ) {
+					// Gracefully bypass unreadable individual files or permission errors
+					continue;
 				}
 			}
+		} catch ( Throwable $dir_err ) {
+			// Catch any unreadable top-level directories gracefully
 		}
 	}
 
@@ -471,20 +570,28 @@ class SuperShield_Scanner {
 				continue;
 			}
 
-			$iterator = new RecursiveIteratorIterator(
-				new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
-				RecursiveIteratorIterator::SELF_FIRST
-			);
+			try {
+				$dir_it = new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS | FilesystemIterator::UNIX_PATHS );
+				$iterator = new RecursiveIteratorIterator( $dir_it, RecursiveIteratorIterator::SELF_FIRST, RecursiveIteratorIterator::CATCH_GET_CHILD );
 
-			foreach ( $iterator as $file ) {
-				if ( $file->isFile() && 'php' === strtolower( pathinfo( $file->getFilename(), PATHINFO_EXTENSION ) ) ) {
-					$file_path = wp_normalize_path( $file->getPathname() );
-					// Skip SuperShield plugin directory to prevent self-detection of signature definitions & test fixtures
-					if ( defined( 'SUPERSHIELD_PLUGIN_DIR' ) && 0 === strpos( $file_path, wp_normalize_path( SUPERSHIELD_PLUGIN_DIR ) ) ) {
+				foreach ( $iterator as $file ) {
+					try {
+						if ( $file->isFile() && 'php' === strtolower( pathinfo( $file->getFilename(), PATHINFO_EXTENSION ) ) ) {
+							$file_path = wp_normalize_path( $file->getPathname() );
+							// Skip SuperShield plugin directory to prevent self-detection of signature definitions & test fixtures
+							if ( defined( 'SUPERSHIELD_PLUGIN_DIR' ) && 0 === strpos( $file_path, wp_normalize_path( SUPERSHIELD_PLUGIN_DIR ) ) ) {
+								continue;
+							}
+							self::scan_single_file_content( $file_path, $signatures, $results );
+						}
+					} catch ( Throwable $f_err ) {
+						// Gracefully skip any unreadable files or permission denied errors
 						continue;
 					}
-					self::scan_single_file_content( $file_path, $signatures, $results );
 				}
+			} catch ( Throwable $dir_err ) {
+				// Gracefully skip unreadable subdirectories
+				continue;
 			}
 		}
 	}

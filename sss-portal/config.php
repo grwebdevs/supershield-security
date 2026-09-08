@@ -4,14 +4,14 @@
  * 
  * @package    SuperShield_Portal
  * @author     Ghulam Rasool <grwebdevs.com>
- * @version    2.3.0
+ * @version    2.4.0
  */
 
 defined('SSS_ACCESS') or define('SSS_ACCESS', true);
 
 return array(
     'app_name'        => 'SuperShield Security Central Hub',
-    'app_version'     => '2.3.0',
+    'app_version'     => '2.4.0',
     'site_url'        => 'https://sss.grwebdevs.com',
     'agency_url'      => 'https://grwebdevs.com',
     'author_name'     => 'Ghulam Rasool',

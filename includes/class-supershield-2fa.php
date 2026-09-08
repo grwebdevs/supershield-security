@@ -429,7 +429,7 @@ class SuperShield_2FA {
 		$label = rawurlencode( $clean_issuer ) . ':' . rawurlencode( $clean_user );
 		$issuer_param = rawurlencode( $clean_issuer );
 
-		return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_param}&algorithm=SHA1&digits=6&period=30";
+		return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_param}";
 	}
 
 	/**

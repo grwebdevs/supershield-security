@@ -16,7 +16,7 @@ define( 'ABSPATH', str_replace( '\\', '/', __DIR__ . '/../' ) );
 define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content/' );
 define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . 'plugins/' );
 define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . 'mu-plugins/' );
-define( 'SUPERSHIELD_VERSION', '2.3.0' );
+define( 'SUPERSHIELD_VERSION', '2.4.0' );
 define( 'SUPERSHIELD_PLUGIN_DIR', ABSPATH );
 define( 'SUPERSHIELD_BASENAME', 'supershield-security/supershield-security.php' );
 define( 'AUTH_KEY', 'test_auth_key_1234567890abcdef' );
@@ -975,23 +975,23 @@ $decrypted_rule = SuperShield_AntiTamper::decrypt_vault( $encrypted_vault );
 assert_test( $decrypted_rule === $sample_rule, 'AES-256-GCM vault cleanly decrypted back to original plaintext rule in-memory' );
 
 // --- 12. GitHub Releases Auto-Updater ---
-echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.3.0) ---\n";
-assert_test( version_compare( '2.4.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
-assert_test( ! version_compare( '2.2.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
+echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.4.0) ---\n";
+assert_test( version_compare( '2.5.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
+assert_test( ! version_compare( '2.3.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
 
 $fake_transient = (object) array( 'response' => array() );
 // Populate mock cache
 set_transient( 'supershield_latest_release_cache', array(
-	'version'      => '2.4.0',
-	'tag_name'     => 'v2.4.0',
-	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.4.0/supershield-security.zip',
-	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.4.0',
+	'version'      => '2.5.0',
+	'tag_name'     => 'v2.5.0',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.5.0/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.5.0',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );
 
 $updated_transient = SuperShield_Updater::filter_update_transient( $fake_transient );
-assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.4.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
+assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.5.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
 delete_transient( 'supershield_latest_release_cache' );
 
 // 12.2 Secret Custom Login Slug & Direct Bot POST Blocking
@@ -1118,23 +1118,17 @@ assert_test( is_array( SuperShield_Utils::get_settings() ), 'SuperShield_Utils::
 @unlink( $tmp_uploads . '/avatar.php.jpg' );
 @unlink( $tmp_uploads . '/.6345dc54.php' );
 @unlink( $tmp_uploads . '/.htaccess' );
-$quarantine_files = @glob( $tmp_uploads . '/supershield-quarantine/*' );
-if ( is_array( $quarantine_files ) ) {
-	foreach ( $quarantine_files as $f ) { @unlink( $f ); }
+@unlink( $tmp_uploads . '/.htaccess' );
+if ( class_exists( 'SuperShield_Cleaner' ) ) {
+	SuperShield_Cleaner::recursive_rmdir( $tmp_uploads );
+} else {
+	@rmdir( $tmp_uploads );
 }
-$backup_files = @glob( $tmp_uploads . '/supershield-quarantine/backups/*' );
-if ( is_array( $backup_files ) ) {
-	foreach ( $backup_files as $f ) { @unlink( $f ); }
-}
-@rmdir( $tmp_uploads . '/supershield-quarantine/backups' );
-@unlink( $tmp_uploads . '/supershield-quarantine/.htaccess' );
-@rmdir( $tmp_uploads . '/supershield-quarantine' );
-@rmdir( $tmp_uploads );
 
 echo "\n========================================================\n";
 echo " Results: $pass_count of $test_count tests passed.\n";
 if ( $pass_count === $test_count ) {
-	echo " ALL 2.3.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
+	echo " ALL 2.4.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
 } else {
 	echo " SOME TESTS FAILED!\n";
 }

@@ -189,10 +189,14 @@ $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn
 						</label>
 					</div>
 
-					<div style="margin-top:16px;">
+					<div style="margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
 						<button type="submit" class="btn-shield-primary">
 							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Email Alert Settings
 						</button>
+						<button type="button" id="btn-send-test-alert" class="btn-shield-secondary">
+							<span class="dashicons dashicons-email-alt" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Send Test Alert Email
+						</button>
+						<span id="test-alert-feedback" style="font-size:13px; font-weight:600;"></span>
 					</div>
 				</form>
 			</div>

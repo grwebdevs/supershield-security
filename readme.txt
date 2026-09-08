@@ -5,7 +5,7 @@ Tags: security, firewall, malware scanner, waf, brute force, hardening, xmlrpc, 
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -90,12 +90,12 @@ SuperShield aims to permanently disrupt the WordPress security ecosystem by prov
 
 == Changelog ==
 
-= 2.2.1 =
-* Resolved custom secret login URL routing: initialized login defense early before WordPress init priority 1 so custom login slugs reliably render wp-login.php instead of falling through to blog themes.
-* Fixed GeoIP admin lockout: added logged-in administrator bypass to GeoIP inspection to prevent legitimate administrators from getting locked out on wp-admin or security 403 screens.
-* Fixed URL query parameter preservation: preserved action, redirect_to, and nonce parameters across custom login rewrites without double URL-encoding.
-* Added auto-whitelist for administrator IP upon saving firewall and GeoIP settings to guarantee accidental lockouts never occur.
-* Enhanced UI button state isolation to prevent multi-button text concatenation across admin control panels.
+= 2.4.0 =
+* Fixed scan timeout & PHP memory limits: Implemented chunked multi-stage scanning engine (`run_scan_stage`) allowing sequential AJAX execution of core diffs, uploads, droppers, signatures, and database scans with granular live percentage feedback (15% -> 35% -> 55% -> 75% -> 90% -> 100%).
+* Added recursive filesystem iterator error resilience: wrapped directory iterators with `RecursiveIteratorIterator::CATCH_GET_CHILD` and granular file-level exception trapping, permanently eliminating uncaught `UnexpectedValueException` permission fatal errors on restricted server directories.
+* Implemented missing `ajax_start_scan` and `ajax_scan_stage` endpoints in `SuperShield_Admin`, eliminating uncaught `TypeError: Call to undefined method` 500 errors.
+* Enhanced Decoy 404 Honeypot with humorous cyberpunk "404 LOL — Nice Try, Hacker!" interface, completely eliminating secret login slug leak on unauthenticated `/wp-admin` and `/wp-admin/admin.php` probes.
+* Added native PHP mail() test dispatch diagnostic button in Diagnostics settings for verifying server email delivery without paid SMTP.
 
 = 2.3.0 =
 * Added Decoy 404 Honeypot Page: Direct access to /wp-admin or /wp-login.php by unauthenticated visitors now shows a convincing animated 404 error page with logged IP and request ID — attackers never see the secret login slug via redirect.

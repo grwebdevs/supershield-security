@@ -86,9 +86,44 @@ $zip_name = "supershield-security-v{$new_version}.zip";
 $zip_path = $base_dir . '/' . $zip_name;
 $std_zip  = $base_dir . '/supershield-security.zip';
 
-// Build with PowerShell Compress-Archive
-$ps_cmd = "Compress-Archive -Path '{$base_dir}\\admin', '{$base_dir}\\includes', '{$base_dir}\\languages', '{$base_dir}\\sss-portal', '{$base_dir}\\supershield-security.php', '{$base_dir}\\readme.txt', '{$base_dir}\\README.md', '{$base_dir}\\manifest.sig', '{$base_dir}\\uninstall.php', '{$base_dir}\\LICENSE' -DestinationPath '{$zip_path}' -Force";
+// Prepare clean staging directory with standard wrapper folder: supershield-security/
+$staging_root = $base_dir . '/_build_staging';
+$plugin_stage = $staging_root . '/supershield-security';
+if ( is_dir( $staging_root ) ) {
+    shell_exec( "powershell -NoProfile -Command \"Remove-Item -Recurse -Force '{$staging_root}'\"" );
+}
+mkdir( $plugin_stage, 0777, true );
+
+// Copy only production plugin components (NO portal, NO tests, NO chat_history, NO git)
+$copy_items = array(
+    'admin'                  => true,
+    'includes'               => true,
+    'languages'              => true,
+    'supershield-security.php' => false,
+    'readme.txt'             => false,
+    'README.md'              => false,
+    'manifest.sig'           => false,
+    'uninstall.php'          => false,
+);
+
+foreach ( $copy_items as $item => $is_dir ) {
+    $src = $base_dir . '/' . $item;
+    $dst = $plugin_stage . '/' . $item;
+    if ( file_exists( $src ) ) {
+        if ( $is_dir ) {
+            shell_exec( "powershell -NoProfile -Command \"Copy-Item -Recurse -Force '{$src}' '{$dst}'\"" );
+        } else {
+            copy( $src, $dst );
+        }
+    }
+}
+
+// Compress the clean wrapper folder
+$ps_cmd = "Compress-Archive -Path '{$plugin_stage}' -DestinationPath '{$zip_path}' -Force";
 shell_exec( "powershell -NoProfile -Command \"{$ps_cmd}\"" );
+
+// Clean up staging
+shell_exec( "powershell -NoProfile -Command \"Remove-Item -Recurse -Force '{$staging_root}'\"" );
 
 if ( ! file_exists( $zip_path ) ) {
     if ( file_exists( $std_zip ) ) {

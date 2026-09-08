@@ -24,6 +24,7 @@ class SuperShield_Admin {
 		// Core AJAX Endpoints
 		add_action( 'wp_ajax_supershield_save_settings', array( $this, 'ajax_save_settings' ) );
 		add_action( 'wp_ajax_supershield_start_scan', array( $this, 'ajax_start_scan' ) );
+		add_action( 'wp_ajax_supershield_scan_stage', array( $this, 'ajax_scan_stage' ) );
 		add_action( 'wp_ajax_supershield_surgical_clean', array( $this, 'ajax_surgical_clean' ) );
 		add_action( 'wp_ajax_supershield_restore_core', array( $this, 'ajax_restore_core' ) );
 		add_action( 'wp_ajax_supershield_quarantine_file', array( $this, 'ajax_quarantine_file' ) );
@@ -38,6 +39,7 @@ class SuperShield_Admin {
 		add_action( 'wp_ajax_supershield_verify_2fa', array( $this, 'ajax_verify_2fa' ) );
 		add_action( 'wp_ajax_supershield_disable_2fa', array( $this, 'ajax_disable_2fa' ) );
 		add_action( 'wp_ajax_supershield_destroy_sessions', array( $this, 'ajax_destroy_sessions' ) );
+		add_action( 'wp_ajax_supershield_send_test_email', array( $this, 'ajax_send_test_email' ) );
 	}
 
 	/**
@@ -502,8 +504,12 @@ class SuperShield_Admin {
 			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
 		}
 
-		$results = SuperShield_Scanner::run_full_scan();
-		wp_send_json_success( $results );
+		try {
+			$results = SuperShield_Scanner::run_full_scan();
+			wp_send_json_success( $results );
+		} catch ( Throwable $e ) {
+			wp_send_json_error( array( 'message' => 'Scanner error: ' . $e->getMessage() ) );
+		}
 	}
 
 	/**
@@ -783,5 +789,79 @@ class SuperShield_Admin {
 
 		SuperShield_DB::log_event( 'admin_action', 'Security event logs cleared by administrator.' );
 		wp_send_json_success( array( 'message' => 'Logs cleared successfully.' ) );
+	}
+
+	/**
+	 * AJAX: Dispatch test security alert email via native PHP mail.
+	 */
+	public function ajax_send_test_email() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$recipients = SuperShield_Notifier::get_recipients();
+		if ( empty( $recipients ) ) {
+			wp_send_json_error( array( 'message' => 'No valid email recipients configured.' ) );
+		}
+
+		$details = array(
+			'Server Host'       => esc_html( gethostname() ?: 'Linux Server' ),
+			'Outbound Engine'   => 'Native PHP mail() / wp_mail() [100% Free Zero-Cost]',
+			'Target User'       => esc_html( wp_get_current_user()->user_login ),
+			'Recipients Count'  => count( $recipients ),
+			'Delivery Protocol' => 'Free Server Pipeline Verified',
+		);
+
+		$sent = SuperShield_Notifier::dispatch_alert(
+			'test_alert',
+			'Diagnostic Test Security Alert',
+			'This test security alert confirms that your WordPress hosting server is successfully delivering SuperShield real-time notifications via free server PHP mail with zero paid SMTP dependencies.',
+			$details,
+			admin_url( 'admin.php?page=supershield-diagnostics' )
+		);
+
+		if ( $sent ) {
+			wp_send_json_success( array(
+				'message'    => 'Test security alert dispatched to: ' . implode( ', ', $recipients ),
+				'recipients' => $recipients,
+			) );
+		} else {
+			wp_send_json_error( array(
+				'message' => 'Failed to dispatch email. Please ensure your hosting provider has PHP mail() enabled.',
+			) );
+		}
+	}
+
+	/**
+	 * AJAX: Run chunked stage of the malware and integrity scan.
+	 */
+	public function ajax_scan_stage() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$stage = isset( $_POST['stage'] ) ? sanitize_key( $_POST['stage'] ) : 'init';
+		$raw_state = isset( $_POST['state'] ) && is_array( $_POST['state'] ) ? $_POST['state'] : array();
+
+		$state = array(
+			'scanned_files' => isset( $raw_state['scanned_files'] ) ? (int) $raw_state['scanned_files'] : 0,
+			'threats_found' => isset( $raw_state['threats_found'] ) ? (int) $raw_state['threats_found'] : 0,
+			'issues'        => isset( $raw_state['issues'] ) && is_array( $raw_state['issues'] ) ? $raw_state['issues'] : array(),
+			'start_time'    => isset( $raw_state['start_time'] ) ? (float) $raw_state['start_time'] : microtime( true ),
+		);
+
+		try {
+			$stage_result = SuperShield_Scanner::run_scan_stage( $stage, $state );
+			wp_send_json_success( $stage_result );
+		} catch ( Throwable $e ) {
+			wp_send_json_error( array(
+				'message' => 'Scan stage [' . esc_html( $stage ) . '] error: ' . $e->getMessage(),
+				'stage'   => $stage,
+			) );
+		}
 	}
 }

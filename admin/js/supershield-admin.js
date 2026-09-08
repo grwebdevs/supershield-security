@@ -123,7 +123,7 @@
 			}
 		});
 
-		// 2. Full Security Scan Runner
+		// 2. Full Security Scan Runner (Chunked Multi-Stage Execution Engine)
 		$('#btn-start-security-scan').on('click', function(e) {
 			e.preventDefault();
 
@@ -131,30 +131,59 @@
 			var $statusText = $('#scan-status-text');
 			var $progressBar = $('#scan-progress-bar');
 
-			setButtonLoading($btn, 'Scanning in progress...');
-			$statusText.text('SuperShield Scanner analyzing core diffs, uploads, dot droppers, entropy, and database...');
-			$progressBar.css('width', '35%');
+			setButtonLoading($btn, 'Scanning...');
+			$progressBar.css('width', '10%');
+			$statusText.text('Initializing SuperShield Scanner engine...');
 
-			$.post(supershield_vars.ajax_url, {
-				action: 'supershield_start_scan',
-				nonce: supershield_vars.nonce
-			}, function(response) {
-				restoreButton($btn);
-				$progressBar.css('width', '100%');
+			function executeStage(stage, state) {
+				$.ajax({
+					url: supershield_vars.ajax_url,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						action: 'supershield_scan_stage',
+						stage: stage,
+						state: state,
+						nonce: supershield_vars.nonce
+					},
+					timeout: 120000
+				}).done(function(response) {
+					if (response && response.success && response.data) {
+						var data = response.data;
+						$progressBar.css('width', data.progress + '%');
+						$statusText.html('<strong>[' + data.progress + '%]</strong> ' + data.message);
 
-				if (response.success) {
-					var data = response.data;
-					$statusText.html('<strong>Scan Completed in ' + data.duration + 's.</strong> Files Scanned: ' + data.scanned_files + ' | Threats Found: ' + data.threats_found);
-					setTimeout(function() {
-						location.reload();
-					}, 1200);
-				} else {
-					$statusText.text('Scan failed: ' + (response.data.message || 'Unknown scan error.'));
-				}
-			}).fail(function() {
-				restoreButton($btn);
-				$statusText.text('Error: Server timed out during scan. Please check PHP memory limit.');
-			});
+						if (data.is_complete) {
+							restoreButton($btn);
+							$progressBar.css('width', '100%');
+							showAlert('Forensic scan completed! Reloading findings...', true);
+							setTimeout(function() {
+								location.reload();
+							}, 1200);
+						} else if (data.next_stage) {
+							executeStage(data.next_stage, data.state);
+						}
+					} else {
+						restoreButton($btn);
+						var errMsg = (response && response.data && response.data.message) ? response.data.message : 'Scan stage returned unexpected response.';
+						$statusText.html('<span style="color:#ef4444;">❌ ' + errMsg + '</span>');
+						showAlert('Scan failed: ' + errMsg, false);
+					}
+				}).fail(function(xhr, textStatus) {
+					restoreButton($btn);
+					var errMsg = 'Server communication error during stage [' + stage + '].';
+					if (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+						errMsg = xhr.responseJSON.data.message;
+					} else if (textStatus === 'timeout') {
+						errMsg = 'Scan stage [' + stage + '] timed out. Please check PHP memory limit or server execution timeout.';
+					}
+					$statusText.html('<span style="color:#ef4444;">❌ ' + errMsg + '</span>');
+					showAlert(errMsg, false);
+				});
+			}
+
+			// Start from the 'init' stage
+			executeStage('init', {});
 		});
 
 		// 3. 1-Click Surgical Disinfection
@@ -557,6 +586,32 @@
 			}).fail(function() {
 				restoreButton($btn);
 				showAlert('Could not contact GitHub API.', false);
+			});
+		// 12. Send Test Security Alert Email
+		$('#btn-send-test-alert').on('click', function(e) {
+			e.preventDefault();
+
+			var $btn = $(this);
+			var $feedback = $('#test-alert-feedback');
+			setButtonLoading($btn, 'Dispatching test email...');
+			$feedback.text('').css('color', '');
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_send_test_email',
+				nonce: supershield_vars.nonce
+			}, function(response) {
+				restoreButton($btn);
+				if (response.success) {
+					$feedback.text('✅ ' + (response.data.message || 'Dispatched!')).css('color', '#10b981');
+					showAlert(response.data.message, true);
+				} else {
+					$feedback.text('❌ ' + (response.data.message || 'Failed to dispatch.')).css('color', '#ef4444');
+					showAlert(response.data.message, false);
+				}
+			}).fail(function() {
+				restoreButton($btn);
+				$feedback.text('❌ Server communication timeout.').css('color', '#ef4444');
+				showAlert('Server communication timeout while sending mail.', false);
 			});
 		});
 

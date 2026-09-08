@@ -1,15 +1,15 @@
 <?php
 /**
- * Zero-Dependency Enterprise TOTP & Pure-PHP SVG QR Code Engine
+ * Zero-Dependency Enterprise TOTP & Pure-PHP ISO/IEC 18004 SVG QR Code Engine
  * 
  * Implements:
  *  - RFC 6238 (TOTP: Time-Based One-Time Password Algorithm)
- *  - RFC 4226 (HOTP: An HMAC-Based One-Time Password Algorithm)
+ *  - RFC 4226 (HOTP: HMAC-Based One-Time Password Algorithm)
  *  - RFC 4648 (Base32 decoding & encoding)
  *  - ISO/IEC 18004 specification for pure-PHP SVG QR-Code matrix rendering
  * 
- * Works seamlessly with:
- *  - Google Authenticator
+ * Fully compatible with:
+ *  - Google Authenticator (Android & iOS)
  *  - Microsoft Authenticator
  *  - Authy
  *  - 1Password / Bitwarden
@@ -17,7 +17,7 @@
  * 
  * @package SuperShield_Portal
  * @author  Ghulam Rasool <grwebdevs.com>
- * @version 2.2.1
+ * @version 2.3.0
  */
 
 defined('SSS_ACCESS') or define('SSS_ACCESS', true);
@@ -48,7 +48,7 @@ class SSS_TOTP {
     }
 
     /**
-     * Format a secret with spaces for effortless human readability (e.g. ABCD EFGH IJKL MNOP).
+     * Format a secret with spaces for human readability (e.g. ABCD EFGH IJKL MNOP).
      *
      * @param string $secret
      * @return string
@@ -59,7 +59,7 @@ class SSS_TOTP {
     }
 
     /**
-     * Decode RFC 4648 Base32 string into binary bytes.
+     * Decode RFC 4648 Base32 string into raw binary.
      *
      * @param string $b32
      * @return string|false
@@ -129,11 +129,11 @@ class SSS_TOTP {
     }
 
     /**
-     * Verify a submitted TOTP code with standard clock-drift allowance (+/- 1 time step = 30s).
+     * Verify a submitted TOTP code with clock-drift allowance (+/- discrepancy time steps).
      *
      * @param string $secret
      * @param string $code
-     * @param int    $discrepancy Windows to check before and after (1 = +/- 30s).
+     * @param int    $discrepancy Windows to check before and after (1 = +/- 30s, 2 = +/- 60s).
      * @return bool
      */
     public static function verify_totp($secret, $code, $discrepancy = 1) {
@@ -156,6 +156,7 @@ class SSS_TOTP {
 
     /**
      * Generate standard otpauth:// URI string for mobile authenticators.
+     * Keeps parameter footprint minimal for optimal QR pixel density.
      *
      * @param string $username
      * @param string $secret
@@ -175,7 +176,7 @@ class SSS_TOTP {
         $label = rawurlencode($clean_issuer) . ':' . rawurlencode($clean_user);
         $issuer_param = rawurlencode($clean_issuer);
 
-        return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_param}&algorithm=SHA1&digits=6&period=30";
+        return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_param}";
     }
 
     /**
@@ -215,8 +216,8 @@ class SSS_TOTP {
 }
 
 /**
- * Pure-PHP ISO/IEC 18004 Compliant QR Code Generator
- * Zero dependencies, no Imagick, no GD, no external web APIs.
+ * Pure-PHP ISO/IEC 18004 Compliant QR Code Matrix & Vector SVG Generator
+ * Full spec implementation with exact Reed-Solomon GF(2^8) EC and module reservation.
  */
 class SSS_QRCode {
 
@@ -331,31 +332,6 @@ class SSS_QRCode {
         return array_slice($info, count($data_bytes), $ec_count);
     }
 
-    public static function get_svg($text, $pixel_size = 220, $ec_level = self::EC_L) {
-        $matrix = self::encode($text, $ec_level);
-        $size = count($matrix);
-        $quiet_zone = 4;
-        $grid_size = $size + ($quiet_zone * 2);
-        $box = $pixel_size / $grid_size;
-
-        $rects = '';
-        for ($r = 0; $r < $size; $r++) {
-            for ($c = 0; $c < $size; $c++) {
-                if (1 === $matrix[$r][$c]) {
-                    $x = round(($c + $quiet_zone) * $box, 2);
-                    $y = round(($r + $quiet_zone) * $box, 2);
-                    $w = round($box, 2);
-                    $rects .= "<rect x='{$x}' y='{$y}' width='{$w}' height='{$w}' fill='#0a0f1d'/>\n";
-                }
-            }
-        }
-
-        return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {$pixel_size} {$pixel_size}' width='{$pixel_size}' height='{$pixel_size}' shape-rendering='crispEdges'>\n" .
-            "<rect width='100%' height='100%' fill='#ffffff' rx='10'/>\n" .
-            $rects .
-            "</svg>";
-    }
-
     private static function mask_cond($mask_id, $r, $c) {
         switch ($mask_id) {
             case 0: return (($r + $c) % 2 === 0);
@@ -440,32 +416,31 @@ class SSS_QRCode {
             }
         }
 
-        $dark_count = 0;
+        $dark = 0;
         for ($r = 0; $r < $size; $r++) {
             for ($c = 0; $c < $size; $c++) {
                 if (1 === $matrix[$r][$c]) {
-                    $dark_count++;
+                    $dark++;
                 }
             }
         }
         $total = $size * $size;
-        $pct = ($dark_count / $total) * 100;
-        $prev_5 = floor($pct / 5) * 5;
-        $next_5 = ceil($pct / 5) * 5;
-        $diff1 = abs($prev_5 - 50) / 5;
-        $diff2 = abs($next_5 - 50) / 5;
-        $penalty += min($diff1, $diff2) * 10;
+        $pct = ($dark / $total) * 100;
+        $prev5 = (int)($pct / 5) * 5;
+        $next5 = $prev5 + 5;
+        $step = min(abs($prev5 - 50), abs($next5 - 50)) / 5;
+        $penalty += (int)$step * 10;
 
         return $penalty;
     }
 
     public static function encode($text, $ec_level = self::EC_L) {
-        $data_len = strlen($text);
+        $len = strlen($text);
 
-        // Select minimal QR version (1 to 10)
+        // Determine smallest version that fits data
         $version = 0;
         for ($v = 1; $v <= 10; $v++) {
-            if (isset(self::$capacities[$v][$ec_level]) && $data_len <= self::$capacities[$v][$ec_level]) {
+            if (isset(self::$capacities[$v][$ec_level]) && self::$capacities[$v][$ec_level] >= $len) {
                 $version = $v;
                 break;
             }
@@ -475,215 +450,223 @@ class SSS_QRCode {
             $version = 10;
         }
 
-        $total_cw = self::$total_codewords[$version];
-        $specs = self::$block_specs[$version][$ec_level];
-
-        $total_data_cw = 0;
-        foreach ($specs as $sp) {
-            $total_data_cw += $sp[0] * $sp[1];
+        $block_list = self::$block_specs[$version][$ec_level];
+        $total_data_bytes = 0;
+        foreach ($block_list as $b_group) {
+            $total_data_bytes += $b_group[0] * $b_group[1];
         }
 
-        // 8-bit Byte Mode Header: Mode Indicator '0100' (4 bits) + Character Count (8 bits for V1-V9, 16 bits for V10)
+        // 1. Bit buffer encoding: Mode 8-bit byte (0100)
         $bits = '0100';
-        $bits .= str_pad(decbin($data_len), ($version < 10 ? 8 : 16), '0', STR_PAD_LEFT);
+        $char_count_bits = ($version >= 10) ? 16 : 8;
+        $bits .= str_pad(decbin($len), $char_count_bits, '0', STR_PAD_LEFT);
 
-        for ($i = 0; $i < $data_len; $i++) {
+        for ($i = 0; $i < $len; $i++) {
             $bits .= str_pad(decbin(ord($text[$i])), 8, '0', STR_PAD_LEFT);
         }
 
-        $max_bits = $total_data_cw * 8;
-        if (strlen($bits) < $max_bits) {
-            $terminator_len = min(4, $max_bits - strlen($bits));
-            $bits .= str_repeat('0', $terminator_len);
+        // Terminator
+        $max_data_bits = $total_data_bytes * 8;
+        $rem = $max_data_bits - strlen($bits);
+        $term_len = min(4, max(0, $rem));
+        $bits .= str_repeat('0', $term_len);
+
+        // Pad to byte
+        if (strlen($bits) % 8 !== 0) {
+            $bits .= str_repeat('0', 8 - (strlen($bits) % 8));
         }
 
-        while (strlen($bits) % 8 !== 0) {
-            $bits .= '0';
+        // Pad bytes 0xEC, 0x11
+        $pad_bytes = array('11101100', '00010001');
+        $p_idx = 0;
+        while (strlen($bits) < $max_data_bits) {
+            $bits .= $pad_bytes[$p_idx % 2];
+            $p_idx++;
         }
 
-        $pad_bytes = array('11101100', '00010001'); // 0xEC, 0x11
-        $pad_idx = 0;
-        while (strlen($bits) < $max_bits) {
-            $bits .= $pad_bytes[$pad_idx % 2];
-            $pad_idx++;
-        }
-
+        // Convert bits to bytes
         $data_bytes = array();
         for ($i = 0; $i < strlen($bits); $i += 8) {
             $data_bytes[] = bindec(substr($bits, $i, 8));
         }
 
-        // Divide into RS Blocks
+        // 2. Divide data into blocks and compute Reed-Solomon EC
         $data_blocks = array();
         $ec_blocks = array();
-        $offset = 0;
+        $byte_offset = 0;
 
-        foreach ($specs as $sp) {
-            $num_blocks = $sp[0];
-            $data_len_block = $sp[1];
-            $ec_len_block = $sp[2];
+        foreach ($block_list as $b_group) {
+            $num_blocks = $b_group[0];
+            $data_words = $b_group[1];
+            $ec_words   = $b_group[2];
 
             for ($b = 0; $b < $num_blocks; $b++) {
-                $block = array_slice($data_bytes, $offset, $data_len_block);
-                $offset += $data_len_block;
-                $data_blocks[] = $block;
-                $ec_blocks[] = self::calculate_rs_block($block, $ec_len_block);
+                $block_data = array_slice($data_bytes, $byte_offset, $data_words);
+                $byte_offset += $data_words;
+                $data_blocks[] = $block_data;
+                $ec_blocks[]   = self::calculate_rs_block($block_data, $ec_words);
             }
         }
 
-        // Interleave Data and Error Correction Codewords
-        $final_codewords = array();
+        // 3. Interleave data codewords
+        $interleaved = array();
         $max_data_len = 0;
-        foreach ($data_blocks as $b) {
-            $max_data_len = max($max_data_len, count($b));
+        foreach ($data_blocks as $db) {
+            $max_data_len = max($max_data_len, count($db));
         }
 
         for ($i = 0; $i < $max_data_len; $i++) {
-            foreach ($data_blocks as $b) {
-                if ($i < count($b)) {
-                    $final_codewords[] = $b[$i];
+            foreach ($data_blocks as $db) {
+                if ($i < count($db)) {
+                    $interleaved[] = $db[$i];
                 }
             }
         }
 
+        // Interleave EC codewords
         $max_ec_len = 0;
-        foreach ($ec_blocks as $b) {
-            $max_ec_len = max($max_ec_len, count($b));
+        foreach ($ec_blocks as $eb) {
+            $max_ec_len = max($max_ec_len, count($eb));
         }
 
         for ($i = 0; $i < $max_ec_len; $i++) {
-            foreach ($ec_blocks as $b) {
-                if ($i < count($b)) {
-                    $final_codewords[] = $b[$i];
+            foreach ($ec_blocks as $eb) {
+                if ($i < count($eb)) {
+                    $interleaved[] = $eb[$i];
                 }
             }
         }
 
-        $final_bits = '';
-        foreach ($final_codewords as $cw) {
-            $final_bits .= str_pad(decbin($cw), 8, '0', STR_PAD_LEFT);
+        // Convert interleaved bytes back to bit array
+        $final_bits = array();
+        foreach ($interleaved as $byte_val) {
+            for ($b = 7; $b >= 0; $b--) {
+                $final_bits[] = ($byte_val >> $b) & 1;
+            }
         }
 
-        // Remainder bits for versions 2-6
+        // Remainder bits for version
         $remainder_bits = array(1 => 0, 2 => 7, 3 => 7, 4 => 7, 5 => 7, 6 => 7, 7 => 0, 8 => 0, 9 => 0, 10 => 0);
-        if (isset($remainder_bits[$version]) && $remainder_bits[$version] > 0) {
-            $final_bits .= str_repeat('0', $remainder_bits[$version]);
+        $rem_count = isset($remainder_bits[$version]) ? $remainder_bits[$version] : 0;
+        for ($r = 0; $r < $rem_count; $r++) {
+            $final_bits[] = 0;
         }
 
-        $matrix_size = 17 + (4 * $version);
-        $matrix = array_fill(0, $matrix_size, array_fill(0, $matrix_size, -1));
+        // 4. Construct Matrix & Module Reservation Map
+        $matrix_size = $version * 4 + 17;
+        $matrix = array_fill(0, $matrix_size, array_fill(0, $matrix_size, null));
+        $reserved = array_fill(0, $matrix_size, array_fill(0, $matrix_size, false));
 
-        // 1. Finder Patterns & Separators
-        $finders = array(array(0, 0), array(0, $matrix_size - 7), array($matrix_size - 7, 0));
-        foreach ($finders as $f) {
-            $fr = $f[0];
-            $fc = $f[1];
-            for ($r = 0; $r < 7; $r++) {
-                for ($c = 0; $c < 7; $c++) {
-                    if (0 === $r || 6 === $r || 0 === $c || 6 === $c || ($r >= 2 && $r <= 4 && $c >= 2 && $c <= 4)) {
-                        $matrix[$fr + $r][$fc + $c] = 1;
-                    } else {
-                        $matrix[$fr + $r][$fc + $c] = 0;
-                    }
-                }
-            }
-        }
-
-        // Separators around Finder Patterns
-        for ($i = 0; $i < 8; $i++) {
-            if ($i < $matrix_size && 7 < $matrix_size) {
-                $matrix[$i][7] = 0;
-                $matrix[7][$i] = 0;
-                $matrix[$i][$matrix_size - 8] = 0;
-                $matrix[7][$matrix_size - 1 - $i] = 0;
-                $matrix[$matrix_size - 8][$i] = 0;
-                $matrix[$matrix_size - 1 - $i][7] = 0;
-            }
-        }
-
-        // 2. Timing Patterns
-        for ($i = 8; $i < $matrix_size - 8; $i++) {
-            if ($matrix[6][$i] === -1) {
-                $matrix[6][$i] = ($i % 2 === 0) ? 1 : 0;
-            }
-            if ($matrix[$i][6] === -1) {
-                $matrix[$i][6] = ($i % 2 === 0) ? 1 : 0;
-            }
-        }
-
-        // 3. Dark Module
-        $matrix[(4 * $version) + 9][8] = 1;
-
-        // 4. Alignment Patterns (Versions 2+)
-        if (isset(self::$align_patterns[$version])) {
-            $coords = self::$align_patterns[$version];
-            foreach ($coords as $ar) {
-                foreach ($coords as $ac) {
-                    if ($matrix[$ar][$ac] !== -1) {
-                        continue;
-                    }
-                    for ($dr = -2; $dr <= 2; $dr++) {
-                        for ($dc = -2; $dc <= 2; $dc++) {
-                            if (abs($dr) === 2 || abs($dc) === 2 || (0 === $dr && 0 === $dc)) {
-                                $matrix[$ar + $dr][$ac + $dc] = 1;
-                            } else {
-                                $matrix[$ar + $dr][$ac + $dc] = 0;
-                            }
+        // Place Finder Patterns (Top-Left, Top-Right, Bottom-Left)
+        $place_finder = function($row, $col) use (&$matrix, &$reserved, $matrix_size) {
+            for ($r = -1; $r <= 7; $r++) {
+                for ($c = -1; $c <= 7; $c++) {
+                    $mr = $row + $r;
+                    $mc = $col + $c;
+                    if ($mr >= 0 && $mr < $matrix_size && $mc >= 0 && $mc < $matrix_size) {
+                        if ($r >= 0 && $r <= 6 && $c >= 0 && $c <= 6) {
+                            $is_dark = (0 === $r || 6 === $r || 0 === $c || 6 === $c || ($r >= 2 && $r <= 4 && $c >= 2 && $c <= 4));
+                            $matrix[$mr][$mc] = $is_dark ? 1 : 0;
+                        } else {
+                            $matrix[$mr][$mc] = 0; // Separator
                         }
+                        $reserved[$mr][$mc] = true;
+                    }
+                }
+            }
+        };
+
+        $place_finder(0, 0);
+        $place_finder(0, $matrix_size - 7);
+        $place_finder($matrix_size - 7, 0);
+
+        // Alignment Patterns for Version >= 2
+        $coords = isset(self::$align_patterns[$version]) ? self::$align_patterns[$version] : array();
+        foreach ($coords as $ar) {
+            foreach ($coords as $ac) {
+                if ($reserved[$ar][$ac]) {
+                    continue; // Overlaps with finder pattern
+                }
+                for ($r = -2; $r <= 2; $r++) {
+                    for ($c = -2; $c <= 2; $c++) {
+                        $is_dark = (2 === abs($r) || 2 === abs($c) || (0 === $r && 0 === $c));
+                        $matrix[$ar + $r][$ac + $c] = $is_dark ? 1 : 0;
+                        $reserved[$ar + $r][$ac + $c] = true;
                     }
                 }
             }
         }
 
-        // Reserve Format Information Areas
-        for ($i = 0; $i < 9; $i++) {
-            if ($matrix[8][$i] === -1) $matrix[8][$i] = -2;
-            if ($matrix[$i][8] === -1) $matrix[$i][8] = -2;
+        // Timing Patterns
+        for ($i = 8; $i < $matrix_size - 8; $i++) {
+            $val = ($i % 2 === 0) ? 1 : 0;
+            if (!$reserved[6][$i]) {
+                $matrix[6][$i] = $val;
+                $reserved[6][$i] = true;
+            }
+            if (!$reserved[$i][6]) {
+                $matrix[$i][6] = $val;
+                $reserved[$i][6] = true;
+            }
+        }
+
+        // Dark Module
+        $matrix[4 * $version + 9][8] = 1;
+        $reserved[4 * $version + 9][8] = true;
+
+        // Reserve Format Information Areas (ISO 18004 spec-exact)
+        for ($i = 0; $i <= 8; $i++) {
+            $reserved[8][$i] = true;
+            $reserved[$i][8] = true;
         }
         for ($i = 0; $i < 8; $i++) {
-            if ($matrix[8][$matrix_size - 1 - $i] === -1) $matrix[8][$matrix_size - 1 - $i] = -2;
-            if ($matrix[$matrix_size - 1 - $i][8] === -1) $matrix[$matrix_size - 1 - $i][8] = -2;
+            $reserved[8][$matrix_size - 1 - $i] = true;
+        }
+        for ($i = 0; $i < 7; $i++) {
+            $reserved[$matrix_size - 1 - $i][8] = true;
         }
 
-        // Place Data Bits in Up/Down 2-Column Zig-Zag
+        // 5. Place Data Bits in Matrix
         $bit_idx = 0;
-        $total_bit_len = strlen($final_bits);
-        $col = $matrix_size - 1;
-        $going_up = true;
+        $total_bits_count = count($final_bits);
+        $dir = -1; // Moving upwards
+        $row = $matrix_size - 1;
 
-        while ($col > 0) {
-            if (6 === $col) {
-                $col--;
+        for ($col = $matrix_size - 1; $col > 0; $col -= 2) {
+            $actual_col = $col;
+            if ($actual_col <= 6) {
+                $actual_col--; // Skip vertical timing column 6
             }
+            $col_range = array($actual_col, $actual_col - 1);
 
-            for ($row_step = 0; $row_step < $matrix_size; $row_step++) {
-                $row = $going_up ? ($matrix_size - 1 - $row_step) : $row_step;
-
-                for ($c = 0; $c < 2; $c++) {
-                    $curr_col = $col - $c;
-                    if ($matrix[$row][$curr_col] === -1) {
-                        $bit_val = ($bit_idx < $total_bit_len) ? (int)$final_bits[$bit_idx] : 0;
-                        $matrix[$row][$curr_col] = $bit_val;
+            while (true) {
+                for ($c_off = 0; $c_off < 2; $c_off++) {
+                    $curr_col = $col_range[$c_off];
+                    if (!$reserved[$row][$curr_col]) {
+                        $matrix[$row][$curr_col] = ($bit_idx < $total_bits_count) ? $final_bits[$bit_idx] : 0;
                         $bit_idx++;
                     }
                 }
-            }
 
-            $going_up = !$going_up;
-            $col -= 2;
+                $row += $dir;
+                if ($row < 0 || $row >= $matrix_size) {
+                    $row -= $dir;
+                    $dir = -$dir;
+                    break;
+                }
+            }
         }
 
-        // Select Best Mask Pattern (0-7)
+        // 6. Evaluate all 8 mask patterns and pick best ISO 18004 mask
         $best_mask = 0;
         $min_penalty = PHP_INT_MAX;
-        $best_matrix = $matrix;
+        $best_matrix = null;
 
         for ($m_id = 0; $m_id < 8; $m_id++) {
             $trial = $matrix;
-
             for ($r = 0; $r < $matrix_size; $r++) {
                 for ($c = 0; $c < $matrix_size; $c++) {
-                    if ($trial[$r][$c] >= 0 && $matrix[$r][$c] !== -2) {
+                    if (!$reserved[$r][$c]) {
                         if (self::mask_cond($m_id, $r, $c)) {
                             $trial[$r][$c] ^= 1;
                         }
@@ -691,6 +674,7 @@ class SSS_QRCode {
                 }
             }
 
+            // Format bits for this candidate mask
             $format_data = ($ec_level << 3) | $m_id;
             $rem = $format_data << 10;
             for ($i = 4; $i >= 0; $i--) {
@@ -700,8 +684,11 @@ class SSS_QRCode {
             }
             $format_bits = (($format_data << 10) | $rem) ^ 0x5412;
 
+            // Write ISO/IEC 18004 Format Information Bits
             for ($i = 0; $i < 15; $i++) {
                 $mod = ($format_bits >> $i) & 1;
+
+                // Vertical format info
                 if ($i < 6) {
                     $trial[$i][8] = $mod;
                 } elseif ($i < 8) {
@@ -710,6 +697,7 @@ class SSS_QRCode {
                     $trial[$matrix_size - 15 + $i][8] = $mod;
                 }
 
+                // Horizontal format info
                 if ($i < 8) {
                     $trial[8][$matrix_size - 1 - $i] = $mod;
                 } elseif ($i < 9) {
@@ -727,6 +715,7 @@ class SSS_QRCode {
             }
         }
 
+        // Final normalization to clean integers (0 or 1)
         for ($r = 0; $r < $matrix_size; $r++) {
             for ($c = 0; $c < $matrix_size; $c++) {
                 $best_matrix[$r][$c] = (1 === $best_matrix[$r][$c]) ? 1 : 0;
@@ -734,5 +723,30 @@ class SSS_QRCode {
         }
 
         return $best_matrix;
+    }
+
+    public static function get_svg($text, $pixel_size = 220, $ec_level = self::EC_L) {
+        $matrix = self::encode($text, $ec_level);
+        $size = count($matrix);
+        $quiet_zone = 4; // ISO/IEC 18004 specifies 4-module quiet zone
+        $grid_size = $size + ($quiet_zone * 2);
+        $box = $pixel_size / $grid_size;
+
+        $rects = '';
+        for ($r = 0; $r < $size; $r++) {
+            for ($c = 0; $c < $size; $c++) {
+                if (1 === $matrix[$r][$c]) {
+                    $x = round(($c + $quiet_zone) * $box, 2);
+                    $y = round(($r + $quiet_zone) * $box, 2);
+                    $w = round($box, 2);
+                    $rects .= "<rect x='{$x}' y='{$y}' width='{$w}' height='{$w}' fill='#0a0f1d'/>\n";
+                }
+            }
+        }
+
+        return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {$pixel_size} {$pixel_size}' width='{$pixel_size}' height='{$pixel_size}' shape-rendering='crispEdges'>\n" .
+            "<rect width='100%' height='100%' fill='#ffffff' rx='10'/>\n" .
+            $rects .
+            "</svg>";
     }
 }

@@ -79,13 +79,15 @@ class SuperShield_Notifier {
 			return false;
 		}
 
-		// Anti-flood throttle: prevent email storms during rapid bot attacks
-		$throttle_key = 'sss_alert_throttle_' . md5( $event_type . '_' . ( $details['Attacker IP'] ?? '' ) . '_' . ( $details['Target File'] ?? '' ) );
-		if ( get_transient( $throttle_key ) ) {
-			return false;
+		// Anti-flood throttle: prevent email storms during rapid bot attacks (exempt test alerts)
+		if ( 'test_alert' !== $event_type ) {
+			$throttle_key = 'sss_alert_throttle_' . md5( $event_type . '_' . ( $details['Attacker IP'] ?? '' ) . '_' . ( $details['Target File'] ?? '' ) );
+			if ( get_transient( $throttle_key ) ) {
+				return false;
+			}
+			// Set 30-minute throttle for repeat instances of this exact incident
+			set_transient( $throttle_key, 1, 30 * MINUTE_IN_SECONDS );
 		}
-		// Set 30-minute throttle for repeat instances of this exact incident
-		set_transient( $throttle_key, 1, 30 * MINUTE_IN_SECONDS );
 
 		$site_name = get_bloginfo( 'name' );
 		$site_url  = home_url();
