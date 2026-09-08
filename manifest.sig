@@ -1,15 +1,15 @@
 {
-    "supershield-security.php": "c5a7f234f49994c4122374dc0642e00a69ce74a2c9877912d7058e21a2349381",
-    "includes\/class-supershield-core.php": "b1e42fa16d3706a831cb3578afb4b09e9d2950f4901f88852bc4b9f65868e66f",
+    "supershield-security.php": "76fabd6fcc709b2b220fb353432fdc6864daf9643130dd61d780471ea999ae46",
+    "includes\/class-supershield-core.php": "67e94aae5b92316f490223335ac12a8676fbd91db589604ad994b9b0d9f1d8b3",
     "includes\/class-supershield-activator.php": "eb01f5b2b761d46fd07e167f3a889f71b5a2f4e5a58d2709a6a3f240371210bf",
     "includes\/class-supershield-deactivator.php": "87a6f99727573b408bc82b88497fe9123bf6e7932ff009c45ab20e7d4e333ca0",
-    "includes\/class-supershield-waf.php": "75a56cfba11e3ddecc2e14697666018ba1efc9a4ec1f196bdcd68d709cc75b29",
-    "includes\/class-supershield-scanner.php": "fced39634d11c0e70431c67ccbbae382c9d6b25e871fe4e6ed26dc094b1fcaa1",
+    "includes\/class-supershield-waf.php": "a1078032942f8c67920f7155836fa0f37be117cfba5f8e6f3b7934e7cff7a529",
+    "includes\/class-supershield-scanner.php": "cce1fad4b9a7ffedf78a32c887215ef19de6788b38bd0ad9c56652c23ac0d7de",
     "includes\/class-supershield-cleaner.php": "f96b81c39b58857cd862b2b9cb5640745566ddb17c03c2829bb3eb7f2939321c",
-    "includes\/class-supershield-geoip.php": "c61087db531149475eac70bd552cd0aaa68cf19ad444de57d685075f419dcdf3",
+    "includes\/class-supershield-geoip.php": "30e1e13720557dce1d340d3ad991ab9cc686a61f3a54f8cd6ace16a046c1ff60",
     "includes\/class-supershield-2fa.php": "e46dab5471f5dfa59f0b1045b3b99ecd8a306e525863d5628ea854472c113ec2",
     "includes\/class-supershield-qrcode.php": "23896910c2d52fc1b8488a9f82f538516398d8591ae7da652d0418611ad3a4c6",
-    "includes\/class-supershield-login-security.php": "cca177c390f279f39856ffa9571c09139a0d4e44efe2c516d9b5e3057a453ff9",
+    "includes\/class-supershield-login-security.php": "6a313ab3a275b828f24e2d78db2daa56c01787e955681b191462c7a1ba2cb7f8",
     "includes\/class-supershield-hardening.php": "170d9efca5a9b97f4e91216c36e239b29430b77ddbaadd386ed19649d3375c32",
     "includes\/class-supershield-ip-manager.php": "4e61a863d0348233a6e7bc60a7424546f99426fd177bc23be406fa6053c6af3f",
     "includes\/class-supershield-antitamper.php": "6a74dbcd4b1daa393ea3771b1d80234d6b8c9a24a0746c65530a3accc5bb792a",
@@ -17,6 +17,6 @@
     "includes\/class-supershield-utils.php": "8358bbc5d9187a16170448539e069c080040b478a1779543f986e6f1b6a58e0c",
     "includes\/class-supershield-updater.php": "396c2dfe054f45530d9d37497ad69972c15ff6b7a065dc8234064d1566e755b9",
     "includes\/class-supershield-telemetry.php": "5a6d0aef8115e57e46071b0c7b279302c3818a773d267c61e8dd822ee868ae81",
-    "includes\/class-supershield-notifier.php": "00113ab91726e13f012d07c10ed79a6d65f6171c942598f668cc41cfb8f8204d",
-    "admin\/class-supershield-admin.php": "3eaa185d26ff47821b9beb39839954744f29a57abc0d4d1a678bef73d2c4f8df"
+    "includes\/class-supershield-notifier.php": "98bc6fde277b2756ef8faf565afb4302261a57d73aefcc3181edb82594b838b2",
+    "admin\/class-supershield-admin.php": "58379ff8100c548b3cfa94eaa637423c7153bb1a3d1b7aa970293c8283a065bc"
 }

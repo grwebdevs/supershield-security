@@ -5,7 +5,7 @@
  *
  * @package SuperShield_Security
  * @author  Ghulam Rasool <grwebdevs.com>
- * @version 2.2.0
+ * @version 2.2.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

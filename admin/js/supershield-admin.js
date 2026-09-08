@@ -1,6 +1,6 @@
 /**
  * SuperShield Security — Administrative Control Center
- * Version 2.2.0 Enterprise Production Suite
+ * Version 2.2.1 Enterprise Production Suite
  * Author: Ghulam Rasool <grwebdevs.com>
  */
 (function($) {
@@ -45,6 +45,7 @@
 
 		function setButtonLoading($btn, text) {
 			if (!$btn || !$btn.length) return;
+			$btn = $($btn[0]);
 			if (!$btn.data('original-html')) {
 				$btn.data('original-html', $btn.html());
 			}
@@ -53,6 +54,7 @@
 
 		function restoreButton($btn) {
 			if (!$btn || !$btn.length) return;
+			$btn = $($btn[0]);
 			if ($btn.data('original-html')) {
 				$btn.prop('disabled', false).html($btn.data('original-html'));
 			} else {

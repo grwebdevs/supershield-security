@@ -577,7 +577,7 @@ class SuperShield_WAF {
 					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
 				</div>
 				<div class="footer">
-					Protected by <strong>SuperShield Security Suite v2.2.0</strong><br>
+					Protected by <strong>SuperShield Security Suite v2.2.1</strong><br>
 					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
 				</div>
 			</div>
@@ -758,7 +758,7 @@ class SuperShield_WAF {
 					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
 				</div>
 				<div class="footer">
-					Protected by <strong>SuperShield Security Suite v2.2.0</strong><br>
+					Protected by <strong>SuperShield Security Suite v2.2.1</strong><br>
 					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
 				</div>
 			</div>

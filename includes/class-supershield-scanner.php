@@ -714,7 +714,7 @@ class SuperShield_Scanner {
 				"- Scan Duration: %s seconds\n" .
 				"- Timestamp: %s UTC\n\n" .
 				"Review and surgically quarantine or clean detected threats in your security dashboard:\n%s\n\n" .
-				"Protected by SuperShield Security Suite v2.2.0\nhttps://SSS.grwebdevs.com",
+				"Protected by SuperShield Security Suite v2.2.1\nhttps://SSS.grwebdevs.com",
 				(int) $results['threats_found'],
 				$site_name,
 				isset( $results['scanned_files'] ) ? (int) $results['scanned_files'] : 0,

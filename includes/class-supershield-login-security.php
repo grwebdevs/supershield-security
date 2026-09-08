@@ -21,7 +21,9 @@ class SuperShield_Login_Security {
 		if ( ! empty( $custom_slug ) ) {
 			add_action( 'init', array( __CLASS__, 'handle_custom_login_slug' ), 1 );
 			add_filter( 'site_url', array( __CLASS__, 'filter_site_url_login' ), 10, 3 );
-			add_filter( 'login_url', array( __CLASS__, 'filter_login_url' ), 10, 2 );
+			add_filter( 'network_site_url', array( __CLASS__, 'filter_site_url_login' ), 10, 3 );
+			add_filter( 'login_url', array( __CLASS__, 'filter_login_url' ), 10, 3 );
+			add_filter( 'wp_redirect', array( __CLASS__, 'filter_wp_redirect_login' ), 10, 2 );
 		}
 
 		// Enterprise Two-Factor Authentication (2FA) Hook (independent of bruteforce toggle)
@@ -241,24 +243,42 @@ class SuperShield_Login_Security {
 		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
 		$parsed_path = trim( (string) parse_url( $request_uri, PHP_URL_PATH ), '/' );
 
+		// Adjust for subdirectory WordPress installations
+		if ( function_exists( 'home_url' ) ) {
+			$home_path = trim( (string) parse_url( home_url(), PHP_URL_PATH ), '/' );
+			if ( ! empty( $home_path ) && 0 === strpos( $parsed_path, $home_path ) ) {
+				$parsed_path = trim( substr( $parsed_path, strlen( $home_path ) ), '/' );
+			}
+		}
+
 		// Accessing custom slug -> internally load login page
 		if ( $parsed_path === $custom_slug ) {
-			if ( ! function_exists( 'is_user_logged_in' ) || ! is_user_logged_in() ) {
-				if ( function_exists( 'status_header' ) ) {
-					status_header( 200 );
-				}
-				if ( defined( 'ABSPATH' ) && file_exists( ABSPATH . 'wp-login.php' ) ) {
-					require_once ABSPATH . 'wp-login.php';
-					if ( ! defined( 'SUPERSHIELD_TESTING' ) ) {
-						exit;
-					}
-				}
-			} else {
+			global $pagenow, $error, $interim_login, $action, $user_login;
+			$pagenow = 'wp-login.php';
+
+			$action = isset( $_REQUEST['action'] ) ? sanitize_key( $_REQUEST['action'] ) : 'login';
+
+			if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() && ! in_array( $action, array( 'logout', 'postpass' ), true ) ) {
 				if ( function_exists( 'admin_url' ) && function_exists( 'wp_safe_redirect' ) ) {
 					wp_safe_redirect( admin_url() );
 					if ( ! defined( 'SUPERSHIELD_TESTING' ) ) {
 						exit;
 					}
+					return;
+				}
+			}
+
+			if ( function_exists( 'status_header' ) ) {
+				status_header( 200 );
+			}
+			if ( function_exists( 'nocache_headers' ) ) {
+				nocache_headers();
+			}
+
+			if ( defined( 'ABSPATH' ) && file_exists( ABSPATH . 'wp-login.php' ) ) {
+				require_once ABSPATH . 'wp-login.php';
+				if ( ! defined( 'SUPERSHIELD_TESTING' ) ) {
+					exit;
 				}
 			}
 		}
@@ -286,36 +306,83 @@ class SuperShield_Login_Security {
 	 *
 	 * @param string $login_url
 	 * @param string $redirect
+	 * @param bool   $force_reauth
 	 * @return string
 	 */
-	public static function filter_login_url( $login_url, $redirect = '' ) {
+	public static function filter_login_url( $login_url, $redirect = '', $force_reauth = false ) {
 		$custom_slug = trim( (string) SuperShield_Utils::get_option( 'custom_login_slug', '' ) );
 		if ( empty( $custom_slug ) || ! function_exists( 'home_url' ) ) {
 			return $login_url;
 		}
-		$new_url = home_url( '/' . $custom_slug );
-		if ( ! empty( $redirect ) && function_exists( 'add_query_arg' ) ) {
-			$new_url = add_query_arg( 'redirect_to', urlencode( $redirect ), $new_url );
+
+		$parsed = parse_url( $login_url );
+		$new_url = trailingslashit( home_url( '/' . $custom_slug ) );
+
+		$query_args = array();
+		if ( ! empty( $parsed['query'] ) ) {
+			if ( function_exists( 'wp_parse_str' ) ) {
+				wp_parse_str( $parsed['query'], $query_args );
+			} else {
+				parse_str( $parsed['query'], $query_args );
+			}
+			if ( ! empty( $redirect ) ) {
+				$query_args['redirect_to'] = $redirect;
+			}
+			if ( $force_reauth ) {
+				$query_args['reauth'] = '1';
+			}
+			$new_url = add_query_arg( $query_args, $new_url );
+		} elseif ( ! empty( $redirect ) ) {
+			$new_url = add_query_arg( 'redirect_to', $redirect, $new_url );
+			if ( $force_reauth ) {
+				$new_url = add_query_arg( 'reauth', '1', $new_url );
+			}
 		}
+
 		return $new_url;
 	}
 
 	/**
-	 * Filter site_url for login endpoints.
+	 * Filter site_url and network_site_url for login endpoints.
 	 *
-	 * @param string $url
-	 * @param string $path
-	 * @param string $scheme
+	 * @param string      $url
+	 * @param string      $path
+	 * @param string|null $scheme
 	 * @return string
 	 */
-	public static function filter_site_url_login( $url, $path, $scheme ) {
-		if ( 'login' === $scheme || 'login_post' === $scheme || strpos( $path, 'wp-login.php' ) !== false ) {
+	public static function filter_site_url_login( $url, $path, $scheme = null ) {
+		if ( 'login' === $scheme || 'login_post' === $scheme || ( is_string( $path ) && strpos( $path, 'wp-login.php' ) !== false ) ) {
 			$custom_slug = trim( (string) SuperShield_Utils::get_option( 'custom_login_slug', '' ) );
 			if ( ! empty( $custom_slug ) && function_exists( 'home_url' ) ) {
-				return home_url( '/' . $custom_slug );
+				$parsed = parse_url( $url );
+				$new_url = trailingslashit( home_url( '/' . $custom_slug ) );
+				if ( ! empty( $parsed['query'] ) ) {
+					$new_url .= '?' . $parsed['query'];
+				}
+				return $new_url;
 			}
 		}
 		return $url;
+	}
+
+	/**
+	 * Filter wp_redirect to replace wp-login.php with custom login slug.
+	 *
+	 * @param string $location
+	 * @param int    $status
+	 * @return string
+	 */
+	public static function filter_wp_redirect_login( $location, $status = 302 ) {
+		$custom_slug = trim( (string) SuperShield_Utils::get_option( 'custom_login_slug', '' ) );
+		if ( empty( $custom_slug ) ) {
+			return $location;
+		}
+
+		if ( false !== strpos( $location, 'wp-login.php' ) ) {
+			$location = str_replace( 'wp-login.php', trailingslashit( $custom_slug ), $location );
+		}
+
+		return $location;
 	}
 
 	/**
@@ -403,7 +470,7 @@ class SuperShield_Login_Security {
 		$url = 'https://api.pwnedpasswords.com/range/' . $prefix;
 		$response = function_exists( 'wp_remote_get' ) ? wp_remote_get( $url, array(
 			'timeout'    => 3,
-			'user-agent' => 'SuperShield-Security-v2.2.0',
+			'user-agent' => 'SuperShield-Security-v2.2.1',
 		) ) : null;
 
 		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {

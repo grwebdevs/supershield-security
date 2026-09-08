@@ -16,7 +16,7 @@ define( 'ABSPATH', str_replace( '\\', '/', __DIR__ . '/../' ) );
 define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content/' );
 define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . 'plugins/' );
 define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . 'mu-plugins/' );
-define( 'SUPERSHIELD_VERSION', '2.2.0' );
+define( 'SUPERSHIELD_VERSION', '2.2.1' );
 define( 'SUPERSHIELD_PLUGIN_DIR', ABSPATH );
 define( 'SUPERSHIELD_BASENAME', 'supershield-security/supershield-security.php' );
 define( 'AUTH_KEY', 'test_auth_key_1234567890abcdef' );
@@ -190,7 +190,19 @@ if ( ! function_exists( 'admin_url' ) ) {
 }
 
 if ( ! function_exists( 'add_query_arg' ) ) {
-	function add_query_arg( $key, $val, $url ) {
+	function add_query_arg( ...$args ) {
+		if ( count( $args ) === 1 ) {
+			return $args[0];
+		}
+		if ( is_array( $args[0] ) ) {
+			$url = isset( $args[1] ) ? $args[1] : '';
+			$query = http_build_query( $args[0] );
+			$delim = ( strpos( $url, '?' ) !== false ) ? '&' : '?';
+			return $url . ( empty( $query ) ? '' : $delim . $query );
+		}
+		$key = $args[0];
+		$val = $args[1];
+		$url = isset( $args[2] ) ? $args[2] : '';
 		$delim = ( strpos( $url, '?' ) !== false ) ? '&' : '?';
 		return $url . $delim . $key . '=' . $val;
 	}
@@ -198,6 +210,12 @@ if ( ! function_exists( 'add_query_arg' ) ) {
 
 if ( ! function_exists( 'nocache_headers' ) ) {
 	function nocache_headers() {}
+}
+
+if ( ! function_exists( 'wp_parse_str' ) ) {
+	function wp_parse_str( $string, &$array ) {
+		parse_str( (string) $string, $array );
+	}
 }
 
 if ( ! function_exists( 'wp_die' ) ) {
@@ -957,23 +975,23 @@ $decrypted_rule = SuperShield_AntiTamper::decrypt_vault( $encrypted_vault );
 assert_test( $decrypted_rule === $sample_rule, 'AES-256-GCM vault cleanly decrypted back to original plaintext rule in-memory' );
 
 // --- 12. GitHub Releases Auto-Updater ---
-echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.2.0) ---\n";
-assert_test( version_compare( '2.2.1', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
-assert_test( ! version_compare( '2.1.9', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
+echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.2.1) ---\n";
+assert_test( version_compare( '2.2.2', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
+assert_test( ! version_compare( '2.2.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
 
 $fake_transient = (object) array( 'response' => array() );
 // Populate mock cache
 set_transient( 'supershield_latest_release_cache', array(
-	'version'      => '2.2.1',
-	'tag_name'     => 'v2.2.1',
-	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.2.1/supershield-security.zip',
-	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.2.1',
+	'version'      => '2.2.2',
+	'tag_name'     => 'v2.2.2',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.2.2/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.2.2',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );
 
 $updated_transient = SuperShield_Updater::filter_update_transient( $fake_transient );
-assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.2.1' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
+assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.2.2' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
 delete_transient( 'supershield_latest_release_cache' );
 
 // 12.2 Secret Custom Login Slug & Direct Bot POST Blocking
@@ -1001,8 +1019,15 @@ try {
 assert_test( ! $lostpass_blocked, 'Legitimate action (lostpassword) on wp-login.php is permitted under custom login slug' );
 
 // Custom slug URL rewriting filters
-$rewritten_login = SuperShield_Login_Security::filter_login_url( 'http://example.com/wp-login.php' );
+$rewritten_login = SuperShield_Login_Security::filter_login_url( 'http://example.com/wp-login.php?redirect_to=http%3A%2F%2Fexample.com%2Fwp-admin%2F' );
 assert_test( strpos( $rewritten_login, 'custom-secret-portal' ) !== false, 'filter_login_url rewrites login URL to custom slug' );
+assert_test( strpos( $rewritten_login, 'redirect_to=' ) !== false, 'filter_login_url preserves redirect_to parameter without double encoding' );
+
+$site_rewritten = SuperShield_Login_Security::filter_site_url_login( 'http://example.com/wp-login.php?action=lostpassword', 'wp-login.php', 'login' );
+assert_test( strpos( $site_rewritten, 'custom-secret-portal' ) !== false && strpos( $site_rewritten, 'action=lostpassword' ) !== false, 'filter_site_url_login preserves query arguments' );
+
+$redirect_rewritten = SuperShield_Login_Security::filter_wp_redirect_login( 'http://example.com/wp-login.php?reauth=1' );
+assert_test( strpos( $redirect_rewritten, 'custom-secret-portal' ) !== false, 'filter_wp_redirect_login replaces wp-login.php with custom slug' );
 
 SuperShield_Utils::update_option( 'custom_login_slug', '' ); // reset
 $_POST = array();
@@ -1106,7 +1131,7 @@ if ( is_array( $backup_files ) ) {
 echo "\n========================================================\n";
 echo " Results: $pass_count of $test_count tests passed.\n";
 if ( $pass_count === $test_count ) {
-	echo " ALL 2.2.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
+	echo " ALL 2.2.1 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
 } else {
 	echo " SOME TESTS FAILED!\n";
 }

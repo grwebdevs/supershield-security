@@ -5,7 +5,7 @@
  * @package    SuperShield_Security
  * @subpackage SuperShield_Security/admin
  * @author     Ghulam Rasool <grwebdevs.com>
- * @version    2.2.0
+ * @version    2.2.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -454,6 +454,28 @@ class SuperShield_Admin {
 
 		if ( isset( $_POST['alert_emails'] ) ) {
 			$current_options['alert_emails'] = sanitize_textarea_field( wp_unslash( $_POST['alert_emails'] ) );
+		}
+
+		// Safety check: protect current admin IP in whitelist so they never lock themselves out
+		$admin_ip = SuperShield_Utils::get_client_ip();
+		if ( ! empty( $admin_ip ) && '127.0.0.1' !== $admin_ip && '::1' !== $admin_ip ) {
+			$whitelist = isset( $current_options['ip_whitelist'] ) && is_array( $current_options['ip_whitelist'] ) ? $current_options['ip_whitelist'] : array();
+			if ( ! in_array( $admin_ip, $whitelist, true ) ) {
+				$whitelist[] = $admin_ip;
+				$current_options['ip_whitelist'] = array_values( array_unique( $whitelist ) );
+			}
+		}
+
+		if ( 'blacklist' === ( isset( $current_options['geoip_mode'] ) ? $current_options['geoip_mode'] : 'blacklist' ) ) {
+			$current_admin_country = SuperShield_GeoIP::resolve_country( $admin_ip );
+			if ( ! empty( $current_admin_country ) && 'LOCAL' !== $current_admin_country && 'XX' !== $current_admin_country ) {
+				if ( isset( $current_options['geoip_countries'] ) && is_array( $current_options['geoip_countries'] ) ) {
+					// Remove current admin country from blacklist if accidentally included
+					$current_options['geoip_countries'] = array_values( array_filter( $current_options['geoip_countries'], function( $c ) use ( $current_admin_country ) {
+						return strtoupper( trim( $c ) ) !== $current_admin_country;
+					} ) );
+				}
+			}
 		}
 
 		update_option( 'supershield_settings', $current_options );

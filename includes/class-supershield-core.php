@@ -40,6 +40,9 @@ class SuperShield_Core {
 	 * Launch the plugin hooks and services.
 	 */
 	public function run() {
+		// Initialize login security early (registers priority 1 init hook for custom login slug)
+		SuperShield_Login_Security::init();
+
 		// Run WAF inspection early (priority -999999 executes prior to third-party plugins per PRD §5.1)
 		add_action( 'plugins_loaded', array( $this, 'run_waf' ), -999999 );
 
@@ -83,7 +86,6 @@ class SuperShield_Core {
 	 */
 	public function init_services() {
 		SuperShield_Hardening::init();
-		SuperShield_Login_Security::init();
 
 		if ( class_exists( 'SuperShield_Scanner' ) ) {
 			SuperShield_Scanner::init();

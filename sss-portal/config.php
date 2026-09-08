@@ -19,7 +19,7 @@ return array(
     // Master Admin Notification Email (Receives feedback, bug reports & 2FA codes)
     'admin_email'     => 'grwebdevs5@gmail.com',
     'admin_email_alt' => 'support@grwebdevs.com',
-    'system_from_email' => 'support@sss.grwebdevs.com',
+    'system_from_email' => 'support@grwebdevs.com',
     
     // Admin Panel Credentials
     'admin_user'      => 'ghulam',

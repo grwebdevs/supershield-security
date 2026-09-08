@@ -303,6 +303,27 @@ class SuperShield_GeoIP {
 			return;
 		}
 
+		// Logged in administrator bypass (never block legitimate admins via GeoIP)
+		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() && function_exists( 'current_user_can' ) && current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		// Cookie fallback before pluggable functions are loaded
+		$has_auth_cookie = false;
+		if ( ! empty( $_COOKIE ) ) {
+			foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
+				if ( 0 === strpos( $cookie_name, 'wordpress_logged_in_' ) ) {
+					$has_auth_cookie = true;
+					break;
+				}
+			}
+		}
+		if ( $has_auth_cookie && defined( 'ABSPATH' ) && defined( 'WPINC' ) && file_exists( ABSPATH . WPINC . '/pluggable.php' ) ) {
+			require_once ABSPATH . WPINC . '/pluggable.php';
+			if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() && function_exists( 'current_user_can' ) && current_user_can( 'manage_options' ) ) {
+				return;
+			}
+		}
+
 		$protect_login_only = SuperShield_Utils::get_option( 'geoip_protect_login_only', 0 );
 		if ( $protect_login_only ) {
 			$raw_uri = isset( $_SERVER['REQUEST_URI'] ) ? strtolower( $_SERVER['REQUEST_URI'] ) : '';

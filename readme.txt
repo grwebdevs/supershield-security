@@ -5,7 +5,7 @@ Tags: security, firewall, malware scanner, waf, brute force, hardening, xmlrpc, 
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.2.0
+Stable tag: 2.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,13 @@ SuperShield Security is engineered by **Ghulam Rasool**, Founder & Principal Sec
 SuperShield aims to permanently disrupt the WordPress security ecosystem by providing enterprise-grade defenses without annual paywalls.
 
 == Changelog ==
+
+= 2.2.1 =
+* Resolved custom secret login URL routing: initialized login defense early before WordPress init priority 1 so custom login slugs reliably render wp-login.php instead of falling through to blog themes.
+* Fixed GeoIP admin lockout: added logged-in administrator bypass to GeoIP inspection to prevent legitimate administrators from getting locked out on wp-admin or security 403 screens.
+* Fixed URL query parameter preservation: preserved action, redirect_to, and nonce parameters across custom login rewrites without double URL-encoding.
+* Added auto-whitelist for administrator IP upon saving firewall and GeoIP settings to guarantee accidental lockouts never occur.
+* Enhanced UI button state isolation to prevent multi-button text concatenation across admin control panels.
 
 = 2.2.0 =
 * Fixed Google Authenticator and mobile authenticator QR code scanning: rewrote pure-PHP QR matrix engine with ISO/IEC 18004 8-mask penalty scoring and strict otpauth URI standard compliance.

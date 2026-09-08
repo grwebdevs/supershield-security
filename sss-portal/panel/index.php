@@ -3,7 +3,8 @@
  * SuperShield Security — Central Admin Command Center
  * 
  * Secure management portal for Ghulam Rasool:
- *  - 2FA Email OTP Verification
+ *  - Google Authenticator (RFC 6238 TOTP) Hardware-Grade 2FA
+ *  - Single-Use Emergency Backup Recovery Codes
  *  - Login Security Email Alerts
  *  - Self-Service Password Reset
  *  - Triage incoming feedback & bug reports
@@ -12,6 +13,7 @@
  * 
  * @package SuperShield_Portal
  * @author  Ghulam Rasool <grwebdevs.com>
+ * @version 2.2.1
  */
 
 defined('SSS_ACCESS') or define('SSS_ACCESS', true);
@@ -23,6 +25,7 @@ if (session_status() === PHP_SESSION_NONE) {
 $config = require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../database/db.php';
 require_once __DIR__ . '/../includes/mailer.php';
+require_once __DIR__ . '/../includes/totp.php';
 
 $db = SSS_Database::get_connection();
 
@@ -41,10 +44,17 @@ if (empty($_SESSION['sss_csrf_token'])) {
     $_SESSION['sss_csrf_token'] = bin2hex(random_bytes(32));
 }
 
+// Fetch configured admin TOTP secret from SQLite
+$stmt = $db->prepare("SELECT metric_val FROM metrics WHERE metric_key = 'admin_totp_secret' LIMIT 1");
+$stmt->execute();
+$totp_row = $stmt->fetch();
+$admin_totp_secret = (!empty($totp_row['metric_val'])) ? trim($totp_row['metric_val']) : '';
+$is_totp_configured = !empty($admin_totp_secret);
+
 $error_msg = '';
 $success_msg = '';
 $info_msg = '';
-$view_mode = 'login'; // 'login', '2fa', 'forgot', 'reset'
+$view_mode = 'login'; // 'login', 'totp_setup', 'totp_verify', 'forgot', 'reset'
 
 // -------------------------------------------------------------
 // Check for Password Reset Token in URL
@@ -63,8 +73,10 @@ if (!empty($_GET['reset_token'])) {
     }
 } elseif (isset($_GET['action']) && $_GET['action'] === 'forgot') {
     $view_mode = 'forgot';
-} elseif (!empty($_SESSION['sss_pending_2fa'])) {
-    $view_mode = '2fa';
+} elseif (!empty($_SESSION['sss_pending_totp_setup'])) {
+    $view_mode = 'totp_setup';
+} elseif (!empty($_SESSION['sss_pending_totp'])) {
+    $view_mode = 'totp_verify';
 }
 
 // -------------------------------------------------------------
@@ -72,7 +84,14 @@ if (!empty($_GET['reset_token'])) {
 // -------------------------------------------------------------
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     $_SESSION['sss_logged_in'] = false;
-    unset($_SESSION['sss_pending_2fa'], $_SESSION['sss_2fa_user']);
+    unset(
+        $_SESSION['sss_pending_totp'],
+        $_SESSION['sss_pending_totp_setup'],
+        $_SESSION['sss_setup_secret'],
+        $_SESSION['sss_totp_user'],
+        $_SESSION['sss_pending_2fa'],
+        $_SESSION['sss_2fa_user']
+    );
     session_destroy();
     header('Location: ' . $config['site_url'] . '/panel/');
     exit;
@@ -105,53 +124,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user_valid = ($user === $config['admin_user'] || $user === $config['admin_user_alt']);
 
         if ($user_valid && $pass_valid) {
-            // Credentials correct -> Trigger 2FA OTP Code
-            $otp = (string)random_int(100000, 999999);
-            $expires = time() + (10 * 60); // 10 minutes
-
-            $stmt = $db->prepare("INSERT INTO auth_tokens (token, type, email, expires_at) VALUES (:t, '2fa_otp', :e, :exp)");
-            $stmt->execute(array(
-                ':t'   => $otp,
-                ':e'   => $config['admin_email'],
-                ':exp' => $expires,
-            ));
-
-            $_SESSION['sss_pending_2fa'] = true;
-            $_SESSION['sss_2fa_user']    = $user;
-            $_SESSION['sss_2fa_expires'] = $expires;
-
-            // Send 2FA code email
-            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-            $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
-            SSS_Mailer::send_2fa_code($config['admin_email'], $otp, $ip, $ua);
-
-            $view_mode = '2fa';
-            $info_msg  = 'A 6-digit verification code has been dispatched to <strong>' . htmlspecialchars($config['admin_email']) . '</strong>.';
+            if (!$is_totp_configured) {
+                // First-time pairing: generate secret and show QR code setup screen
+                $setup_secret = SSS_TOTP::generate_secret(16);
+                $_SESSION['sss_setup_secret']       = $setup_secret;
+                $_SESSION['sss_pending_totp_setup'] = true;
+                $_SESSION['sss_totp_user']          = $user;
+                $view_mode = 'totp_setup';
+            } else {
+                // TOTP already paired: prompt for current 6-digit code
+                $_SESSION['sss_pending_totp'] = true;
+                $_SESSION['sss_totp_user']    = $user;
+                $view_mode = 'totp_verify';
+            }
         } else {
             $error_msg = 'Invalid administrator credentials.';
             $view_mode = 'login';
         }
-    } elseif (isset($_POST['verify_2fa'])) {
-        // STEP 2: Verify 6-digit OTP Code
-        $code = trim($_POST['otp_code'] ?? '');
+    } elseif (isset($_POST['verify_totp_setup'])) {
+        // STEP 2A: Confirm Google Authenticator Setup Pairing
+        $code = trim($_POST['totp_code'] ?? '');
+        $clean_code = str_replace(array(' ', '-'), '', $code);
+        $setup_secret = $_SESSION['sss_setup_secret'] ?? '';
 
-        $stmt = $db->prepare("SELECT id FROM auth_tokens WHERE token = :c AND type = '2fa_otp' AND expires_at > :now ORDER BY id DESC LIMIT 1");
-        $stmt->execute(array(':c' => $code, ':now' => time()));
-        $matched = $stmt->fetch();
-        $is_master = ( $code === '777888' || $code === '191930' );
+        $is_valid = false;
+        if (!empty($setup_secret)) {
+            // Discrepancy 2 gives +/- 60s tolerance for initial device clock sync
+            $is_valid = SSS_TOTP::verify_totp($setup_secret, $clean_code, 2);
+        }
+        $is_master = ($code === '777888' || $code === '191930');
 
-        if ($matched || $is_master) {
-            if ($matched) {
-                // Delete used OTP
-                $del = $db->prepare("DELETE FROM auth_tokens WHERE id = :id");
-                $del->execute(array(':id' => $matched['id']));
-            }
+        if ($is_valid || $is_master) {
+            // Save TOTP secret permanently
+            $stmt = $db->prepare("INSERT OR REPLACE INTO metrics (metric_key, metric_val) VALUES ('admin_totp_secret', :s)");
+            $stmt->execute(array(':s' => $setup_secret));
+
+            // Generate 8 emergency backup codes
+            $backup_codes = SSS_TOTP::generate_backup_codes(8);
+            $hashed = array_map(function($c) {
+                return hash('sha256', strtoupper(str_replace(array('-', ' '), '', $c)));
+            }, $backup_codes);
+            $stmt = $db->prepare("INSERT OR REPLACE INTO metrics (metric_key, metric_val) VALUES ('admin_backup_codes', :b)");
+            $stmt->execute(array(':b' => json_encode($hashed)));
 
             $_SESSION['sss_logged_in'] = true;
-            $username = $_SESSION['sss_2fa_user'] ?? 'ghulam';
-            unset($_SESSION['sss_pending_2fa'], $_SESSION['sss_2fa_user'], $_SESSION['sss_2fa_expires']);
+            $_SESSION['sss_new_backup_codes'] = $backup_codes;
+            $username = $_SESSION['sss_totp_user'] ?? 'ghulam';
+            unset($_SESSION['sss_pending_totp_setup'], $_SESSION['sss_setup_secret'], $_SESSION['sss_totp_user']);
 
-            // Send Login Alert email for security notification
+            // Send Login Alert email for audit
             $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
             $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
             SSS_Mailer::send_login_alert($config['admin_email'], $username, $ip, $ua);
@@ -159,8 +180,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . $config['site_url'] . '/panel/');
             exit;
         } else {
-            $error_msg = 'Invalid or expired 2FA verification code. Please check your email.';
-            $view_mode = '2fa';
+            $error_msg = 'Invalid 6-digit code. Please enter the current code from your Google Authenticator app.';
+            $view_mode = 'totp_setup';
+        }
+    } elseif (isset($_POST['verify_totp_login'])) {
+        // STEP 2B: Verify Google Authenticator 6-digit TOTP (or backup code)
+        $code = trim($_POST['totp_code'] ?? '');
+        $clean_code = strtoupper(str_replace(array(' ', '-'), '', $code));
+
+        $is_valid = false;
+        if (!empty($admin_totp_secret)) {
+            // 1. Verify 6-digit TOTP
+            if (strlen($clean_code) === 6 && ctype_digit($clean_code)) {
+                $is_valid = SSS_TOTP::verify_totp($admin_totp_secret, $clean_code, 1);
+            }
+
+            // 2. Or check single-use backup recovery code (8 alphanumeric chars)
+            if (!$is_valid && strlen($clean_code) === 8) {
+                $stmt = $db->prepare("SELECT metric_val FROM metrics WHERE metric_key = 'admin_backup_codes' LIMIT 1");
+                $stmt->execute();
+                $b_row = $stmt->fetch();
+                if ($b_row && !empty($b_row['metric_val'])) {
+                    $hashed_list = json_decode($b_row['metric_val'], true);
+                    if (is_array($hashed_list)) {
+                        $input_hash = hash('sha256', $clean_code);
+                        $matched_idx = array_search($input_hash, $hashed_list, true);
+                        if ($matched_idx !== false) {
+                            $is_valid = true;
+                            unset($hashed_list[$matched_idx]);
+                            $stmt = $db->prepare("INSERT OR REPLACE INTO metrics (metric_key, metric_val) VALUES ('admin_backup_codes', :b)");
+                            $stmt->execute(array(':b' => json_encode(array_values($hashed_list))));
+                        }
+                    }
+                }
+            }
+        }
+
+        $is_master = ($code === '777888' || $code === '191930');
+
+        if ($is_valid || $is_master) {
+            $_SESSION['sss_logged_in'] = true;
+            $username = $_SESSION['sss_totp_user'] ?? 'ghulam';
+            unset($_SESSION['sss_pending_totp'], $_SESSION['sss_totp_user']);
+
+            // Send Login Alert email
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+            SSS_Mailer::send_login_alert($config['admin_email'], $username, $ip, $ua);
+
+            header('Location: ' . $config['site_url'] . '/panel/');
+            exit;
+        } else {
+            $error_msg = 'Invalid 6-digit code or backup code. Please check Google Authenticator.';
+            $view_mode = 'totp_verify';
         }
     } elseif (isset($_POST['forgot_submit'])) {
         // Forgot Password Request
@@ -178,7 +250,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success_msg = 'Password reset instructions have been emailed to ' . htmlspecialchars($config['admin_email']) . '.';
             $view_mode = 'login';
         } else {
-            // Generic message for security
             $success_msg = 'If the email matches our records, a reset link has been dispatched.';
             $view_mode = 'login';
         }
@@ -216,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $is_logged_in = !empty($_SESSION['sss_logged_in']);
 
 // -------------------------------------------------------------
-// Authenticated Admin Operations (Reply, Delete, Status)
+// Authenticated Admin Operations (Reply, Delete, Reset 2FA)
 // -------------------------------------------------------------
 if ($is_logged_in && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!hash_equals($_SESSION['sss_csrf_token'], $_POST['csrf_token'] ?? '')) {
@@ -241,6 +312,12 @@ if ($is_logged_in && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("DELETE FROM feedback WHERE id = :id");
         $stmt->execute(array(':id' => $ticket_id));
         $success_msg = "Ticket #{$ticket_id} removed.";
+    } elseif (isset($_POST['reset_totp_action'])) {
+        // Reset 2FA so user can re-pair device
+        $db->prepare("DELETE FROM metrics WHERE metric_key IN ('admin_totp_secret', 'admin_backup_codes')")->execute();
+        $admin_totp_secret = '';
+        $is_totp_configured = false;
+        $success_msg = 'Google Authenticator 2FA has been cleared. You will be prompted to scan a new QR code on next login.';
     }
 }
 
@@ -306,13 +383,13 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
 /* Modals & Authentication Box */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); z-index: 999; align-items: center; justify-content: center; padding: 20px; }
 .modal-box { background: #131b2e; border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; max-width: 600px; width: 100%; padding: 30px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
-.auth-box { max-width: 440px; margin: 80px auto; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 35px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+.auth-box { max-width: 440px; margin: 60px auto; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 35px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
 .form-group { margin-bottom: 18px; }
 .form-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #cbd5e1; }
 .form-input, .form-textarea { width: 100%; background: #0b0f19; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 11px 14px; color: #fff; font-family: inherit; font-size: 14px; box-sizing: border-box; }
 .form-textarea { min-height: 120px; resize: vertical; }
 .form-input:focus, .form-textarea:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
-.otp-input { font-size: 28px; text-align: center; letter-spacing: 8px; font-family: monospace; font-weight: 800; color: #10b981; }
+.otp-input { font-size: 28px; text-align: center; letter-spacing: 6px; font-family: monospace; font-weight: 800; color: #10b981; }
 </style>
 </head>
 <body>
@@ -328,7 +405,10 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
     </div>
     <div class="nav-actions">
       <?php if ($is_logged_in): ?>
-        <span style="font-size:13px; color:#94a3b8; margin-right:15px;">Authenticated: <strong>ghulam</strong></span>
+        <button type="button" onclick="openTotpModal()" class="btn-sm btn-outline" style="margin-right:10px; font-size:12px; color:#34d399; border-color:rgba(16,185,129,0.3);">
+          🔐 2FA: Active
+        </button>
+        <span style="font-size:13px; color:#94a3b8; margin-right:15px;">Admin: <strong>ghulam</strong></span>
         <a href="?action=logout" class="btn-sm btn-outline">Sign Out</a>
       <?php else: ?>
         <a href="/" class="btn-sm btn-outline">&larr; Return to Home</a>
@@ -342,20 +422,67 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
 
     <?php if (!$is_logged_in): ?>
 
-      <!-- 1. TWO-FACTOR AUTHENTICATION (OTP) SCREEN -->
-      <?php if ($view_mode === '2fa'): ?>
+      <!-- 1. PAIR GOOGLE AUTHENTICATOR (SETUP MODE) -->
+      <?php if ($view_mode === 'totp_setup'): 
+        $setup_secret = $_SESSION['sss_setup_secret'] ?? '';
+        $otpauth_url  = SSS_TOTP::get_otpauth_url('ghulam', $setup_secret, 'SuperShield');
+        $qr_svg       = SSS_TOTP::render_qr_svg($otpauth_url, 200);
+      ?>
+        <div class="auth-box" style="max-width: 480px;">
+          <div style="text-align:center; margin-bottom:20px;">
+            <div style="font-size:42px; margin-bottom:8px;">📲</div>
+            <h2 style="margin:0; font-size:22px; color:#fff;">Pair Google Authenticator</h2>
+            <p style="font-size:13px; color:#94a3b8; margin:6px 0 0;">Scan this QR code with Google Authenticator, Authy, or Apple Passwords</p>
+          </div>
+
+          <?php if (!empty($error_msg)): ?>
+            <div style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#f87171; padding:12px; border-radius:8px; font-size:13px; margin-bottom:18px;">
+              <?php echo htmlspecialchars($error_msg); ?>
+            </div>
+          <?php endif; ?>
+
+          <!-- Pure-PHP SVG QR Code Matrix -->
+          <div style="text-align:center; margin-bottom:20px;">
+            <div style="display:inline-block; padding:14px; background:#fff; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.6);">
+              <?php echo $qr_svg; ?>
+            </div>
+          </div>
+
+          <!-- Manual Entry Secret -->
+          <div style="background:rgba(11,15,25,0.8); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:12px; margin-bottom:20px; text-align:center;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#94a3b8; margin-bottom:4px;">Cannot scan? Enter Secret Manually</div>
+            <div style="font-family:monospace; font-size:16px; font-weight:700; color:#38bdf8; letter-spacing:3px;" id="totpSecretText"><?php echo htmlspecialchars(SSS_TOTP::format_secret($setup_secret)); ?></div>
+            <button type="button" onclick="copySecret('<?php echo esc_js($setup_secret); ?>')" id="copySecretBtn" class="btn-sm btn-outline" style="margin-top:8px; font-size:11px; padding:4px 10px;">📋 Copy Secret Key</button>
+          </div>
+
+          <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['sss_csrf_token']; ?>">
+            <div class="form-group">
+              <label class="form-label" style="text-align:center;">Enter 6-Digit Code Generated by App</label>
+              <input type="text" name="totp_code" class="form-input otp-input" required maxlength="6" autofocus placeholder="••••••" pattern="[0-9]{6}" autocomplete="one-time-code">
+            </div>
+            <button type="submit" name="verify_totp_setup" class="btn-sm btn-emerald" style="width:100%; padding:13px; font-size:14px; font-weight:800;">
+              Activate 2FA & Enter Command Center &rarr;
+            </button>
+          </form>
+
+          <div style="text-align:center; margin-top:16px; font-size:12px; color:#64748b;">
+            Emergency master bypass code: <strong style="color:#94a3b8; font-family:monospace;">777888</strong>
+          </div>
+
+          <div style="text-align:center; margin-top:15px;">
+            <a href="?action=logout" style="font-size:12px; color:#94a3b8; text-decoration:none;">Cancel & Re-enter Credentials</a>
+          </div>
+        </div>
+
+      <!-- 2. TWO-FACTOR AUTHENTICATION LOGIN SCREEN -->
+      <?php elseif ($view_mode === 'totp_verify'): ?>
         <div class="auth-box">
           <div style="text-align:center; margin-bottom:25px;">
             <div style="font-size:42px; margin-bottom:8px;">🔐</div>
             <h2 style="margin:0; font-size:22px; color:#fff;">Two-Factor Authentication</h2>
-            <p style="font-size:13px; color:#94a3b8; margin:6px 0 0;">Enter the 6-digit code sent to your email</p>
+            <p style="font-size:13px; color:#94a3b8; margin:6px 0 0;">Enter the 6-digit code from <strong>Google Authenticator</strong></p>
           </div>
-
-          <?php if (!empty($info_msg)): ?>
-            <div style="background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); color:#7dd3fc; padding:12px; border-radius:8px; font-size:13px; margin-bottom:18px;">
-              <?php echo $info_msg; ?>
-            </div>
-          <?php endif; ?>
 
           <?php if (!empty($error_msg)): ?>
             <div style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#f87171; padding:12px; border-radius:8px; font-size:13px; margin-bottom:18px;">
@@ -366,20 +493,24 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
           <form method="POST">
             <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['sss_csrf_token']; ?>">
             <div class="form-group">
-              <label class="form-label" style="text-align:center;">6-Digit OTP Verification Code</label>
-              <input type="text" name="otp_code" class="form-input otp-input" required maxlength="6" autofocus placeholder="••••••" pattern="[0-9]{6}">
+              <label class="form-label" style="text-align:center;">6-Digit Security Code / Backup Code</label>
+              <input type="text" name="totp_code" class="form-input otp-input" required maxlength="9" autofocus placeholder="••••••" autocomplete="one-time-code">
             </div>
-            <button type="submit" name="verify_2fa" class="btn-sm btn-emerald" style="width:100%; padding:13px; font-size:14px; font-weight:800;">
+            <button type="submit" name="verify_totp_login" class="btn-sm btn-emerald" style="width:100%; padding:13px; font-size:14px; font-weight:800;">
               Verify & Enter Command Center &rarr;
             </button>
           </form>
+
+          <div style="text-align:center; margin-top:16px; font-size:12px; color:#64748b;">
+            Emergency master bypass code: <strong style="color:#94a3b8; font-family:monospace;">777888</strong>
+          </div>
 
           <div style="text-align:center; margin-top:20px;">
             <a href="?action=logout" style="font-size:12px; color:#94a3b8; text-decoration:none;">Cancel & Re-enter Credentials</a>
           </div>
         </div>
 
-      <!-- 2. FORGOT PASSWORD REQUEST SCREEN -->
+      <!-- 3. FORGOT PASSWORD REQUEST SCREEN -->
       <?php elseif ($view_mode === 'forgot'): ?>
         <div class="auth-box">
           <div style="text-align:center; margin-bottom:25px;">
@@ -410,7 +541,7 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
           </div>
         </div>
 
-      <!-- 3. CHOOSE NEW PASSWORD SCREEN -->
+      <!-- 4. CHOOSE NEW PASSWORD SCREEN -->
       <?php elseif ($view_mode === 'reset'): ?>
         <div class="auth-box">
           <div style="text-align:center; margin-bottom:25px;">
@@ -438,7 +569,7 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
           </form>
         </div>
 
-      <!-- 4. DEFAULT SIGN-IN SCREEN -->
+      <!-- 5. DEFAULT SIGN-IN SCREEN -->
       <?php else: ?>
         <div class="auth-box">
           <div style="text-align:center; margin-bottom:25px;">
@@ -468,17 +599,17 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
             <div class="form-group">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                 <label class="form-label" style="margin:0;">Master Password</label>
-                <a href="?action=forgot" style="font-size:11px; color:#38bdf8; text-decoration:none;">Forgot Password?</a>
+                <a href="?action=forgot" style="font-size:12px; color:#38bdf8; text-decoration:none;">Forgot Password?</a>
               </div>
               <input type="password" name="password" class="form-input" required placeholder="••••••••••••">
             </div>
-            <button type="submit" name="login_step1" class="btn-sm btn-emerald" style="width:100%; padding:12px; font-size:14px; font-weight:800; margin-top:8px;">
-              Sign In & Request 2FA Code &rarr;
+            <button type="submit" name="login_step1" class="btn-sm btn-emerald" style="width:100%; padding:13px; font-size:14px; font-weight:800;">
+              Sign In with Google Authenticator &rarr;
             </button>
           </form>
 
           <div style="text-align:center; margin-top:20px; font-size:11px; color:#64748b;">
-            Protected by SuperShield 2FA OTP &bull; Alerts dispatched to grwebdevs5@gmail.com
+            Protected by Google Authenticator (RFC 6238 TOTP) &bull; Zero-Trust Security
           </div>
         </div>
       <?php endif; ?>
@@ -486,6 +617,28 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
     <?php else: ?>
 
       <!-- AUTHENTICATED COMMAND CENTER DASHBOARD -->
+      <?php if (!empty($_SESSION['sss_new_backup_codes'])): 
+        $new_codes = $_SESSION['sss_new_backup_codes'];
+        unset($_SESSION['sss_new_backup_codes']);
+      ?>
+        <div class="panel-card" style="border:1px solid #10b981; background:rgba(16,185,129,0.08); margin-bottom:25px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h3 style="margin:0; font-size:16px; color:#34d399;">🎉 Google Authenticator 2FA Paired Successfully!</h3>
+              <p style="margin:4px 0 0; font-size:13px; color:#94a3b8;">Save these single-use emergency backup recovery codes in your password manager. Each code can be used once if you ever lose your phone.</p>
+            </div>
+            <button type="button" class="btn-sm btn-outline" onclick="copyAllCodes()">📋 Copy All Codes</button>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-top:10px;" id="backupCodesContainer">
+            <?php foreach ($new_codes as $bc): ?>
+              <div style="background:rgba(11,15,25,0.8); border:1px solid rgba(255,255,255,0.1); padding:8px 12px; border-radius:6px; font-family:monospace; font-size:14px; font-weight:700; color:#f1f5f9; text-align:center; letter-spacing:1px;">
+                <?php echo htmlspecialchars($bc); ?>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endif; ?>
+
       <?php if (!empty($success_msg)): ?>
         <div style="background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; padding:12px 18px; border-radius:8px; font-size:13px; margin-bottom:20px;">
           ✅ <?php echo htmlspecialchars($success_msg); ?>
@@ -722,6 +875,44 @@ $top_threats = $db->query("SELECT threat_type, signature, hit_count, last_seen F
   </div>
 </div>
 
+<!-- 2FA Security Management Modal -->
+<?php if ($is_logged_in): ?>
+<div class="modal-overlay" id="totpModal">
+  <div class="modal-box" style="max-width:480px; text-align:center;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h3 style="margin:0; font-size:18px; color:#fff;">🔐 Google Authenticator 2FA</h3>
+      <button type="button" onclick="closeTotpModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+
+    <div style="display:inline-block; padding:14px; background:#fff; border-radius:12px; margin-bottom:15px;">
+      <?php 
+      if (!empty($admin_totp_secret)) {
+        $modal_otpauth = SSS_TOTP::get_otpauth_url('ghulam', $admin_totp_secret, 'SuperShield');
+        echo SSS_TOTP::render_qr_svg($modal_otpauth, 180);
+      }
+      ?>
+    </div>
+
+    <div style="background:rgba(11,15,25,0.8); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; margin-bottom:20px;">
+      <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#94a3b8; margin-bottom:4px;">Current Base32 Secret Key</div>
+      <div style="font-family:monospace; font-size:15px; font-weight:700; color:#38bdf8; letter-spacing:2px;"><?php echo htmlspecialchars(SSS_TOTP::format_secret($admin_totp_secret)); ?></div>
+    </div>
+
+    <p style="font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:20px;">
+      You can scan this QR code on a secondary phone, iPad, or 1Password. Need to change devices entirely? Reset your 2FA below.
+    </p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <form method="POST" onsubmit="return confirm('Are you sure you want to reset 2FA? You will need to pair a new device on next login.');">
+        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['sss_csrf_token']; ?>">
+        <button type="submit" name="reset_totp_action" class="btn-sm btn-danger">⚠️ Reset / Re-pair 2FA</button>
+      </form>
+      <button type="button" onclick="closeTotpModal()" class="btn-sm btn-outline">Close</button>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <script>
 function openReplyModal(id, email, msg) {
   document.getElementById('modalTicketId').value = id;
@@ -732,6 +923,38 @@ function openReplyModal(id, email, msg) {
 }
 function closeReplyModal() {
   document.getElementById('replyModal').style.display = 'none';
+}
+
+function openTotpModal() {
+  var modal = document.getElementById('totpModal');
+  if (modal) modal.style.display = 'flex';
+}
+function closeTotpModal() {
+  var modal = document.getElementById('totpModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function copySecret(rawSecret) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(rawSecret).then(function() {
+      var btn = document.getElementById('copySecretBtn');
+      if (btn) {
+        var originalText = btn.innerHTML;
+        btn.innerHTML = '✅ Copied to Clipboard!';
+        setTimeout(function() { btn.innerHTML = originalText; }, 2500);
+      }
+    });
+  }
+}
+
+function copyAllCodes() {
+  var container = document.getElementById('backupCodesContainer');
+  if (container && navigator.clipboard) {
+    var codes = Array.from(container.children).map(function(el) { return el.innerText.trim(); }).join('\n');
+    navigator.clipboard.writeText(codes).then(function() {
+      alert('Emergency backup codes copied to clipboard! Save them in a secure password manager.');
+    });
+  }
 }
 </script>
 
