@@ -648,96 +648,158 @@ class SuperShield_Scanner {
 	}
 
 	/**
-	 * Initialize scanner hooks and sync automated daily cron.
+	 * Initialize scanner hooks and sync automated daily/weekly/monthly cron.
 	 */
 	public static function init() {
-		add_action( 'supershield_daily_scan_cron', array( __CLASS__, 'run_scheduled_scan' ) );
+		add_action( 'supershield_daily_scan_cron',   array( __CLASS__, 'run_daily_scheduled_scan' ) );
+		add_action( 'supershield_weekly_scan_cron',  array( __CLASS__, 'run_weekly_scheduled_scan' ) );
+		add_action( 'supershield_monthly_scan_cron', array( __CLASS__, 'run_monthly_scheduled_scan' ) );
+		add_filter( 'cron_schedules',                array( __CLASS__, 'register_cron_schedules' ) );
 		self::sync_cron_schedule();
 	}
 
 	/**
-	 * Synchronize WordPress cron event for daily automated scan.
+	 * Register custom cron recurrences for weekly and monthly scans.
+	 *
+	 * @param array $schedules
+	 * @return array
+	 */
+	public static function register_cron_schedules( $schedules ) {
+		if ( ! isset( $schedules['weekly'] ) ) {
+			$schedules['weekly'] = array(
+				'interval' => 7 * DAY_IN_SECONDS,
+				'display'  => 'Once Weekly',
+			);
+		}
+		if ( ! isset( $schedules['monthly'] ) ) {
+			$schedules['monthly'] = array(
+				'interval' => 30 * DAY_IN_SECONDS,
+				'display'  => 'Once Monthly (30 days)',
+			);
+		}
+		return $schedules;
+	}
+
+	/**
+	 * Synchronize WordPress cron events for daily/weekly/monthly scans.
 	 */
 	public static function sync_cron_schedule() {
 		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_schedule_event' ) ) {
 			return;
 		}
 
-		$enabled = (bool) SuperShield_Utils::get_option( 'daily_scan_cron_enabled', 0 );
-		$hook = 'supershield_daily_scan_cron';
-
-		if ( $enabled ) {
-			if ( ! wp_next_scheduled( $hook ) ) {
-				wp_schedule_event( time() + 3600, 'daily', $hook );
+		// Daily scan
+		$daily_enabled = (bool) SuperShield_Utils::get_option( 'daily_scan_cron_enabled', 0 );
+		$daily_hook    = 'supershield_daily_scan_cron';
+		if ( $daily_enabled ) {
+			if ( ! wp_next_scheduled( $daily_hook ) ) {
+				wp_schedule_event( time() + 3600, 'daily', $daily_hook );
 			}
 		} else {
-			if ( wp_next_scheduled( $hook ) ) {
-				wp_clear_scheduled_hook( $hook );
+			if ( wp_next_scheduled( $daily_hook ) ) {
+				wp_clear_scheduled_hook( $daily_hook );
+			}
+		}
+
+		// Weekly scan report
+		$weekly_enabled = (bool) SuperShield_Utils::get_option( 'weekly_scan_report_enabled', 0 );
+		$weekly_hook    = 'supershield_weekly_scan_cron';
+		if ( $weekly_enabled ) {
+			if ( ! wp_next_scheduled( $weekly_hook ) ) {
+				// Schedule for next Monday 8:00 AM server time
+				wp_schedule_event( time() + HOUR_IN_SECONDS, 'weekly', $weekly_hook );
+			}
+		} else {
+			if ( wp_next_scheduled( $weekly_hook ) ) {
+				wp_clear_scheduled_hook( $weekly_hook );
+			}
+		}
+
+		// Monthly scan report
+		$monthly_enabled = (bool) SuperShield_Utils::get_option( 'monthly_scan_report_enabled', 0 );
+		$monthly_hook    = 'supershield_monthly_scan_cron';
+		if ( $monthly_enabled ) {
+			if ( ! wp_next_scheduled( $monthly_hook ) ) {
+				wp_schedule_event( time() + HOUR_IN_SECONDS, 'monthly', $monthly_hook );
+			}
+		} else {
+			if ( wp_next_scheduled( $monthly_hook ) ) {
+				wp_clear_scheduled_hook( $monthly_hook );
 			}
 		}
 	}
 
 	/**
-	 * Run scheduled daily scan and dispatch alert notifications if threats found.
+	 * Run the daily scheduled scan and alert ONLY if threats are found
+	 * (unless send_clean_report is enabled).
 	 */
-	public static function run_scheduled_scan() {
+	public static function run_daily_scheduled_scan() {
 		$results = self::run_full_scan();
+		$threats = (int) ( $results['threats_found'] ?? 0 );
 
-		if ( ! empty( $results['threats_found'] ) && $results['threats_found'] > 0 ) {
-			$admin_email = function_exists( 'get_option' ) ? get_option( 'admin_email' ) : '';
-			$alert_emails_setting = SuperShield_Utils::get_option( 'alert_emails', '' );
-			$recipients = array();
-
-			if ( ! empty( $admin_email ) && function_exists( 'is_email' ) && is_email( $admin_email ) ) {
-				$recipients[] = $admin_email;
+		if ( $threats > 0 ) {
+			if ( class_exists( 'SuperShield_Notifier' ) ) {
+				SuperShield_Notifier::send_scheduled_report( 'daily', $results );
 			}
-
-			if ( ! empty( $alert_emails_setting ) ) {
-				$custom_emails = array_filter( array_map( 'trim', preg_split( '/[\r\n,]+/', $alert_emails_setting ) ) );
-				foreach ( $custom_emails as $em ) {
-					if ( function_exists( 'is_email' ) && is_email( $em ) ) {
-						$recipients[] = $em;
-					}
-				}
-			}
-
-			$recipients = array_unique( $recipients );
-			$site_name = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : 'WordPress';
-			$scan_url = function_exists( 'admin_url' ) ? admin_url( 'admin.php?page=supershield-scanner' ) : '';
-
-			$subject = sprintf( '[%s] SuperShield Security Alert: %d Threat(s) Detected', $site_name, (int) $results['threats_found'] );
-			$message = sprintf(
-				"SuperShield Security Alert\n\n" .
-				"The automated daily security scan detected %d threat(s) requiring immediate attention on %s.\n\n" .
-				"- Files Analyzed: %d\n" .
-				"- Threats Detected: %d\n" .
-				"- Scan Duration: %s seconds\n" .
-				"- Timestamp: %s UTC\n\n" .
-				"Review and surgically quarantine or clean detected threats in your security dashboard:\n%s\n\n" .
-				"Protected by SuperShield Security Suite v2.2.1\nhttps://SSS.grwebdevs.com",
-				(int) $results['threats_found'],
-				$site_name,
-				isset( $results['scanned_files'] ) ? (int) $results['scanned_files'] : 0,
-				(int) $results['threats_found'],
-				isset( $results['duration'] ) ? $results['duration'] : '0',
-				gmdate( 'Y-m-d H:i:s' ),
-				$scan_url
-			);
-
-			if ( function_exists( 'wp_mail' ) && ! empty( $recipients ) ) {
-				foreach ( $recipients as $recipient ) {
-					wp_mail( $recipient, $subject, $message );
-				}
-			}
-
-			if ( class_exists( 'SuperShield_DB' ) ) {
-				SuperShield_DB::log_event(
-					'MALWARE_CRON_ALERT',
-					"Automated daily scan detected {$results['threats_found']} threat(s). Alert email dispatched.",
-					'',
-					'127.0.0.1'
-				);
+		} elseif ( (bool) SuperShield_Utils::get_option( 'daily_clean_report_enabled', 0 ) ) {
+			// Admin has opted in to also receive clean-bill confirmation
+			if ( class_exists( 'SuperShield_Notifier' ) ) {
+				SuperShield_Notifier::send_scheduled_report( 'daily_clean', $results );
 			}
 		}
+
+		if ( class_exists( 'SuperShield_DB' ) ) {
+			SuperShield_DB::log_event(
+				'MALWARE_CRON_ALERT',
+				"Daily auto-scan complete. Threats: {$threats}. Report dispatched: " . ( $threats > 0 ? 'YES' : 'NO (clean)' ),
+				'',
+				'127.0.0.1'
+			);
+		}
+	}
+
+	/**
+	 * Run the weekly scheduled scan and always send a summary report.
+	 */
+	public static function run_weekly_scheduled_scan() {
+		$results = self::run_full_scan();
+		if ( class_exists( 'SuperShield_Notifier' ) ) {
+			SuperShield_Notifier::send_scheduled_report( 'weekly', $results );
+		}
+
+		if ( class_exists( 'SuperShield_DB' ) ) {
+			SuperShield_DB::log_event(
+				'MALWARE_CRON_ALERT',
+				"Weekly security digest scan complete. Threats: {$results['threats_found']}. Digest sent.",
+				'',
+				'127.0.0.1'
+			);
+		}
+	}
+
+	/**
+	 * Run the monthly scheduled scan and always send a full digest report.
+	 */
+	public static function run_monthly_scheduled_scan() {
+		$results = self::run_full_scan();
+		if ( class_exists( 'SuperShield_Notifier' ) ) {
+			SuperShield_Notifier::send_scheduled_report( 'monthly', $results );
+		}
+
+		if ( class_exists( 'SuperShield_DB' ) ) {
+			SuperShield_DB::log_event(
+				'MALWARE_CRON_ALERT',
+				"Monthly security digest scan complete. Threats: {$results['threats_found']}. Digest sent.",
+				'',
+				'127.0.0.1'
+			);
+		}
+	}
+
+	/**
+	 * Legacy method name alias — kept for backward compatibility with existing cron hooks.
+	 */
+	public static function run_scheduled_scan() {
+		self::run_daily_scheduled_scan();
 	}
 }

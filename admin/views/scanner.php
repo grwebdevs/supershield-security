@@ -116,22 +116,72 @@ $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-
 		<?php endif; ?>
 	</div>
 
-	<!-- Automated Daily Scan Scheduling Panel -->
+	<!-- Automated Scan Scheduling Panel -->
 	<div class="supershield-panel">
 		<div class="supershield-panel-header">
-			<h2>Automated Scan Scheduling &amp; Continuous Defense</h2>
+			<h2>Automated Scan Scheduling &amp; Report Delivery</h2>
 		</div>
 		<form class="supershield-settings-form" id="supershield-scanner-settings-form">
 			<input type="hidden" name="supershield_section" value="scanner">
 
+			<?php
+			// Helper: show next cron time
+			$fmt_next = function( $hook ) {
+				$next = wp_next_scheduled( $hook );
+				return $next
+					? '<span style="color:var(--sss-success); font-size:11px;">Next: ' . esc_html( date_i18n( 'D, d M Y H:i', $next ) ) . '</span>'
+					: '<span style="color:var(--sss-text-muted); font-size:11px;">Not scheduled</span>';
+			};
+			?>
+
+			<!-- Daily Auto-Scan -->
 			<div class="toggle-switch-row">
 				<div class="toggle-info">
-					<h4>Automated Daily Deep Scan (WP-Cron)</h4>
-					<p>Executes an autonomous full multi-tier malware, core integrity, and database audit once every 24 hours. If threats are detected, an immediate email alert is dispatched to administrators.</p>
+					<h4>Daily Auto-Scan (WP-Cron)</h4>
+					<p>Runs a full multi-tier scan every 24 hours. Email alert is sent <strong>only when threats are detected</strong> — never bothers you with clean reports unless you enable the option below. <?php echo $fmt_next( 'supershield_daily_scan_cron' ); // phpcs:ignore ?></p>
 				</div>
 				<label class="switch">
 					<input type="hidden" name="daily_scan_cron_enabled" value="0">
 					<input type="checkbox" name="daily_scan_cron_enabled" value="1" <?php checked( ! empty( $settings['daily_scan_cron_enabled'] ) ); ?>>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<!-- Also send clean-bill report -->
+			<div class="toggle-switch-row" style="margin-left:20px; padding-left:12px; border-left:2px solid var(--sss-border);">
+				<div class="toggle-info">
+					<h4 style="font-size:13px; color:var(--sss-text-secondary);">Also Send Clean-Bill Report for Daily Scan</h4>
+					<p>When enabled, you will also receive a confirmation email when the daily scan finds <em>nothing</em>. Default: OFF.</p>
+				</div>
+				<label class="switch">
+					<input type="hidden" name="daily_clean_report_enabled" value="0">
+					<input type="checkbox" name="daily_clean_report_enabled" value="1" <?php checked( ! empty( $settings['daily_clean_report_enabled'] ) ); ?>>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<!-- Weekly Report -->
+			<div class="toggle-switch-row" style="margin-top:16px; padding-top:14px; border-top:1px solid var(--sss-border);">
+				<div class="toggle-info">
+					<h4>Weekly Security Digest (Every 7 Days)</h4>
+					<p>Scans the site every week and sends a full security summary report — regardless of whether threats are found. Great for client reports. <?php echo $fmt_next( 'supershield_weekly_scan_cron' ); // phpcs:ignore ?></p>
+				</div>
+				<label class="switch">
+					<input type="hidden" name="weekly_scan_report_enabled" value="0">
+					<input type="checkbox" name="weekly_scan_report_enabled" value="1" <?php checked( ! empty( $settings['weekly_scan_report_enabled'] ) ); ?>>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<!-- Monthly Report -->
+			<div class="toggle-switch-row" style="margin-top:16px; padding-top:14px; border-top:1px solid var(--sss-border);">
+				<div class="toggle-info">
+					<h4>Monthly Security Report (Every 30 Days)</h4>
+					<p>A comprehensive monthly digest scanning every 30 days — includes full stats. Ideal for management/compliance reporting. <?php echo $fmt_next( 'supershield_monthly_scan_cron' ); // phpcs:ignore ?></p>
+				</div>
+				<label class="switch">
+					<input type="hidden" name="monthly_scan_report_enabled" value="0">
+					<input type="checkbox" name="monthly_scan_report_enabled" value="1" <?php checked( ! empty( $settings['monthly_scan_report_enabled'] ) ); ?>>
 					<span class="slider"></span>
 				</label>
 			</div>

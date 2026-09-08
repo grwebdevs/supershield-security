@@ -5,7 +5,7 @@ Tags: security, firewall, malware scanner, waf, brute force, hardening, xmlrpc, 
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.2.1
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -97,7 +97,17 @@ SuperShield aims to permanently disrupt the WordPress security ecosystem by prov
 * Added auto-whitelist for administrator IP upon saving firewall and GeoIP settings to guarantee accidental lockouts never occur.
 * Enhanced UI button state isolation to prevent multi-button text concatenation across admin control panels.
 
-= 2.2.0 =
+= 2.3.0 =
+* Added Decoy 404 Honeypot Page: Direct access to /wp-admin or /wp-login.php by unauthenticated visitors now shows a convincing animated 404 error page with logged IP and request ID — attackers never see the secret login slug via redirect.
+* Fixed /wp-admin redirect leak: Previously, visiting /wp-admin unauthenticated would redirect to the secret slug URL, revealing it. Now fully intercepted at the redirect filter level.
+* Added Weekly Security Digest Report: Configurable WP-Cron job scans every 7 days and always sends a formatted HTML report email, perfect for client weekly reports.
+* Added Monthly Security Report: Configurable 30-day cron sends a comprehensive monthly digest — ideal for management/compliance reporting.
+* Added Daily Clean-Bill Notification toggle: Opt in to receive a clean-bill confirmation email even when no threats are detected. Default: OFF (threats-only alerts).
+* Fixed undefined $site_name bug in handle_admin_login() causing PHP notices.
+* Improved send_scheduled_report() with beautiful branded HTML templates for each report type (daily threat, daily clean, weekly digest, monthly digest).
+* Cron schedules now show next scheduled run time in the scanner settings UI.
+
+= 2.2.1 =
 * Fixed Google Authenticator and mobile authenticator QR code scanning: rewrote pure-PHP QR matrix engine with ISO/IEC 18004 8-mask penalty scoring and strict otpauth URI standard compliance.
 * Added 1-Click Copy Secret Key functionality for seamless manual 2FA entry.
 * Fixed admin firewall form button concatenation by isolating access list management into dedicated forms.

@@ -19,6 +19,8 @@ class SuperShield_Login_Security {
 		// Custom secret login URL slug handling
 		$custom_slug = trim( (string) SuperShield_Utils::get_option( 'custom_login_slug', '' ) );
 		if ( ! empty( $custom_slug ) ) {
+			// Intercept /wp-admin and /wp-login.php early — show decoy 404, never reveal secret slug
+			add_action( 'init', array( __CLASS__, 'handle_wp_admin_decoy' ), 0 );
 			add_action( 'init', array( __CLASS__, 'handle_custom_login_slug' ), 1 );
 			add_filter( 'site_url', array( __CLASS__, 'filter_site_url_login' ), 10, 3 );
 			add_filter( 'network_site_url', array( __CLASS__, 'filter_site_url_login' ), 10, 3 );
@@ -232,6 +234,236 @@ class SuperShield_Login_Security {
 	}
 
 	/**
+	 * Intercept direct /wp-admin and /wp-login.php access from unauthenticated visitors.
+	 * Shows a convincing decoy 404 page instead of redirecting to the secret login slug.
+	 * This prevents attackers from discovering the secret login URL via redirect.
+	 */
+	public static function handle_wp_admin_decoy() {
+		if ( defined( 'SUPERSHIELD_TESTING' ) ) {
+			return;
+		}
+
+		// Skip AJAX and REST API calls
+		if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
+			return;
+		}
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return;
+		}
+
+		// Skip if user is already logged in
+		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
+			return;
+		}
+
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
+		$parsed_path = trim( (string) parse_url( $request_uri, PHP_URL_PATH ), '/' );
+
+		// Adjust for subdirectory WordPress installations
+		if ( function_exists( 'home_url' ) ) {
+			$home_path = trim( (string) parse_url( home_url(), PHP_URL_PATH ), '/' );
+			if ( ! empty( $home_path ) && 0 === strpos( $parsed_path, $home_path ) ) {
+				$parsed_path = trim( substr( $parsed_path, strlen( $home_path ) ), '/' );
+			}
+		}
+
+		// Check if accessing wp-admin (but NOT wp-admin/admin-ajax.php)
+		$is_wp_admin_path = (
+			'wp-admin' === $parsed_path ||
+			'wp-admin/' === $parsed_path
+		);
+
+		// Check if accessing wp-login.php directly
+		$is_wp_login_path = ( false !== strpos( $request_uri, 'wp-login.php' ) );
+
+		if ( ! $is_wp_admin_path && ! $is_wp_login_path ) {
+			return;
+		}
+
+		// Allow logout, password reset, and post-pass actions on wp-login.php
+		if ( $is_wp_login_path ) {
+			$action         = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
+			$allowed_direct = array( 'logout', 'postpass', 'lostpassword', 'retrievepassword', 'resetpass', 'rp', 'validate_hack_key' );
+			if ( in_array( $action, $allowed_direct, true ) ) {
+				return;
+			}
+		}
+
+		// Log the probe attempt
+		$client_ip = class_exists( 'SuperShield_Utils' ) ? SuperShield_Utils::get_client_ip() : ( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '0.0.0.0' );
+		if ( class_exists( 'SuperShield_DB' ) ) {
+			SuperShield_DB::log_event(
+				'waf_block',
+				'Decoy 404: Unauthorized /wp-admin or /wp-login.php probe intercepted',
+				'Path: ' . esc_html( $parsed_path ),
+				$client_ip
+			);
+		}
+
+		// Serve decoy 404 page — do NOT redirect, do NOT reveal login slug
+		http_response_code( 404 );
+		header( 'Content-Type: text/html; charset=UTF-8' );
+		header( 'X-Robots-Tag: noindex, nofollow' );
+		header( 'Cache-Control: no-store, no-cache, must-revalidate' );
+		echo self::render_decoy_404_page();
+		exit;
+	}
+
+	/**
+	 * Render a convincing, humorous decoy 404 page shown to anyone who
+	 * tries to directly access /wp-admin or /wp-login.php.
+	 *
+	 * @return string HTML page content
+	 */
+	public static function render_decoy_404_page() {
+		$site_name  = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : 'WordPress';
+		$site_url   = function_exists( 'home_url' ) ? home_url( '/' ) : '/';
+		$client_ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '0.0.0.0';
+		$timestamp  = gmdate( 'Y-m-d H:i:s' );
+		$request_id = strtoupper( substr( md5( $client_ip . $timestamp . wp_rand() ), 0, 12 ) );
+
+		return '<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 Not Found — ' . esc_html( $site_name ) . '</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0a0a0a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container { max-width: 640px; width: 100%; text-align: center; }
+  .glitch-wrapper { position: relative; margin-bottom: 16px; }
+  .code-404 {
+    font-size: clamp(80px, 20vw, 160px);
+    font-weight: 900;
+    line-height: 1;
+    color: #1e293b;
+    text-shadow:
+      3px 0 0 #ef4444,
+      -3px 0 0 #3b82f6;
+    letter-spacing: -4px;
+    user-select: none;
+    animation: glitch 3s infinite;
+  }
+  @keyframes glitch {
+    0%, 90%, 100% { text-shadow: 3px 0 0 #ef4444, -3px 0 0 #3b82f6; }
+    92% { text-shadow: -4px 0 0 #ef4444, 4px 0 0 #3b82f6; }
+    94% { text-shadow: 3px 0 0 #ef4444, -3px 0 0 #3b82f6; transform: translate(-2px, 1px); }
+    96% { text-shadow: -2px 0 0 #10b981, 2px 0 0 #f59e0b; transform: translate(0); }
+  }
+  .shield-emoji { font-size: 64px; display: block; margin: 0 auto 24px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  .subtitle {
+    font-size: 15px;
+    color: #94a3b8;
+    line-height: 1.7;
+    margin-bottom: 28px;
+  }
+  .terminal {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-left: 3px solid #ef4444;
+    border-radius: 8px;
+    padding: 20px 24px;
+    text-align: left;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 28px;
+    line-height: 2;
+  }
+  .terminal .label { color: #64748b; }
+  .terminal .val-red { color: #ef4444; font-weight: 700; }
+  .terminal .val-green { color: #10b981; }
+  .terminal .val-yellow { color: #f59e0b; }
+  .terminal .val-blue { color: #60a5fa; }
+  .terminal .val-muted { color: #475569; }
+  .warning-box {
+    background: #1c0a0a;
+    border: 1px solid #7f1d1d;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    font-size: 13px;
+    color: #fca5a5;
+    line-height: 1.7;
+  }
+  .warning-box strong { color: #ef4444; }
+  .back-link {
+    display: inline-block;
+    background: #1e293b;
+    color: #94a3b8;
+    text-decoration: none;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    border: 1px solid #334155;
+    transition: all 0.2s;
+  }
+  .back-link:hover { background: #334155; color: #e2e8f0; }
+  .footer-note {
+    margin-top: 32px;
+    font-size: 11px;
+    color: #334155;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="glitch-wrapper">
+    <div class="code-404">404</div>
+  </div>
+  <span class="shield-emoji">🛡️</span>
+  <h1>This page does not exist.</h1>
+  <p class="subtitle">
+    You are looking for something that isn\'t here.<br>
+    <strong style="color:#ef4444;">This access attempt has been logged.</strong>
+  </p>
+
+  <div class="terminal">
+    <div><span class="label">STATUS  </span> <span class="val-red">403 FORBIDDEN / 404 NOT FOUND</span></div>
+    <div><span class="label">ORIGIN  </span> <span class="val-yellow">' . esc_html( $client_ip ) . '</span></div>
+    <div><span class="label">TIMESTAMP</span> <span class="val-muted">' . esc_html( $timestamp ) . ' UTC</span></div>
+    <div><span class="label">REF-ID  </span> <span class="val-blue">' . esc_html( $request_id ) . '</span></div>
+    <div><span class="label">FIREWALL </span> <span class="val-green">SUPERSHIELD ACTIVE ✓</span></div>
+  </div>
+
+  <div class="warning-box">
+    ⚠️ <strong>Security Notice:</strong> Unauthorized attempts to access administrative endpoints 
+    are automatically recorded and may result in your IP being permanently blocked. 
+    If you are the site owner, use your secure access URL.
+  </div>
+
+  <a href="' . esc_url( $site_url ) . '" class="back-link">← Return to Homepage</a>
+
+  <p class="footer-note">
+    Protected by SuperShield Security Suite &bull; 
+    <a href="https://sss.grwebdevs.com" style="color:#334155; text-decoration:none;">sss.grwebdevs.com</a><br>
+    Request ID: ' . esc_html( $request_id ) . ' &bull; If you are the site owner, access your admin panel via your secret URL.
+  </p>
+</div>
+</body>
+</html>';
+	}
+
+	/**
 	 * Intercept custom login slug requests and protect wp-login.php direct access.
 	 */
 	public static function handle_custom_login_slug() {
@@ -367,6 +599,7 @@ class SuperShield_Login_Security {
 
 	/**
 	 * Filter wp_redirect to replace wp-login.php with custom login slug.
+	 * Also intercepts redirects from /wp-admin to login page and shows decoy 404 instead.
 	 *
 	 * @param string $location
 	 * @param int    $status
@@ -379,6 +612,37 @@ class SuperShield_Login_Security {
 		}
 
 		if ( false !== strpos( $location, 'wp-login.php' ) ) {
+			// If this is a redirect from /wp-admin (non-logged-in user accessing the admin area)
+			// intercept it and show the decoy 404 page instead of revealing the secret slug.
+			$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
+			$is_admin_redirect = (
+				false !== strpos( $request_uri, 'wp-admin' ) &&
+				! ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) &&
+				! ( defined( 'DOING_AJAX' ) && DOING_AJAX )
+			);
+
+			if ( $is_admin_redirect ) {
+				// Show decoy 404 — do NOT reveal the secret slug via redirect
+				if ( ! defined( 'SUPERSHIELD_TESTING' ) ) {
+					http_response_code( 404 );
+					header( 'Content-Type: text/html; charset=UTF-8' );
+					header( 'X-Robots-Tag: noindex, nofollow' );
+					header( 'Cache-Control: no-store, no-cache, must-revalidate' );
+					$client_ip = class_exists( 'SuperShield_Utils' ) ? SuperShield_Utils::get_client_ip() : '0.0.0.0';
+					if ( class_exists( 'SuperShield_DB' ) ) {
+						SuperShield_DB::log_event(
+							'waf_block',
+							'Decoy 404 (redirect intercept): /wp-admin access by unauthenticated visitor blocked',
+							'Redirect would have been: ' . esc_html( $location ),
+							$client_ip
+						);
+					}
+					echo self::render_decoy_404_page();
+					exit;
+				}
+				return $location;
+			}
+
 			$location = str_replace( 'wp-login.php', trailingslashit( $custom_slug ), $location );
 		}
 

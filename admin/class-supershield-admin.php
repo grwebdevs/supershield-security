@@ -383,7 +383,7 @@ class SuperShield_Admin {
 			'access_lists' => array(),
 			'hardening'    => array( 'block_uploads_php', 'disable_xmlrpc', 'block_user_enumeration', 'disallow_file_edit', 'security_headers', 'hide_wp_version', 'protect_config_files', 'block_hidden_files' ),
 			'login'        => array( 'bruteforce_protection', 'enable_login_honeypot', '2fa_enabled', 'pwned_passwords_check' ),
-			'scanner'      => array( 'daily_scan_cron_enabled' ),
+			'scanner'      => array( 'daily_scan_cron_enabled', 'weekly_scan_report_enabled', 'monthly_scan_report_enabled', 'daily_clean_report_enabled' ),
 			'diagnostics'  => array( 'telemetry_enabled', 'daily_scan_cron_enabled', 'notify_file_changes', 'notify_brute_lockout', 'notify_malware_found', 'notify_admin_login' ),
 		);
 

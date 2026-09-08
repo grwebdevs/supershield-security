@@ -16,7 +16,7 @@ define( 'ABSPATH', str_replace( '\\', '/', __DIR__ . '/../' ) );
 define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content/' );
 define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . 'plugins/' );
 define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . 'mu-plugins/' );
-define( 'SUPERSHIELD_VERSION', '2.2.1' );
+define( 'SUPERSHIELD_VERSION', '2.3.0' );
 define( 'SUPERSHIELD_PLUGIN_DIR', ABSPATH );
 define( 'SUPERSHIELD_BASENAME', 'supershield-security/supershield-security.php' );
 define( 'AUTH_KEY', 'test_auth_key_1234567890abcdef' );
