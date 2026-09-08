@@ -1134,7 +1134,7 @@ if ( is_array( $backup_files ) ) {
 echo "\n========================================================\n";
 echo " Results: $pass_count of $test_count tests passed.\n";
 if ( $pass_count === $test_count ) {
-	echo " ALL 2.2.1 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
+	echo " ALL 2.3.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
 } else {
 	echo " SOME TESTS FAILED!\n";
 }

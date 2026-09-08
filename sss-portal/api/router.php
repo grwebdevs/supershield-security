@@ -104,7 +104,7 @@ class SSS_API_Router {
             'body'         => "### SuperShield Security v" . $config['app_version'] . "\n- 100% Free Zero-Day WAF Protection\n- 1-Click Surgical Malware Cleaner\n- Native TOTP Two-Factor Authentication\n- Offline ISO-3166 GeoIP Country Blocking\n- HMAC-SHA256 Anti-Tamper Core Guard\n- Enterprise WordPress Hardening Suite\n\nLead Architect: Ghulam Rasool (grwebdevs.com)",
             'assets'       => array(
                 array(
-                    'name'                 => 'supershield-security.zip',
+                    'name'                 => 'supershield-security-v' . $config['app_version'] . '.zip',
                     'browser_download_url' => $config['site_url'] . '/download/latest',
                 )
             ),

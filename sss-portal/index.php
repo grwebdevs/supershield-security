@@ -4,7 +4,7 @@
  * 
  * Aesthetic Thesis: Hyper-Defense Glass & Machined Hardware
  * Lead Architect: Ghulam Rasool (grwebdevs.com)
- * Version: 2.2.1
+ * Version: 2.3.0
  */
 
 define('SSS_ACCESS', true);
@@ -33,10 +33,15 @@ if (strpos($request_uri, '/panel') === 0) {
 // 3. Direct Release Download Handler (/download or /download/latest)
 // -------------------------------------------------------------
 if (strpos($request_uri, '/download') === 0) {
-    $zip_file = __DIR__ . '/supershield-security.zip';
-    if (file_exists($zip_file)) {
+    $ver          = $config['app_version'];
+    $versioned    = __DIR__ . '/supershield-security-v' . $ver . '.zip';
+    $fallback_zip = __DIR__ . '/supershield-security.zip';
+    $zip_file     = file_exists($versioned) ? $versioned : (file_exists($fallback_zip) ? $fallback_zip : null);
+    $dl_name      = 'supershield-security-v' . $ver . '.zip';
+
+    if ($zip_file) {
         header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="supershield-security.zip"');
+        header('Content-Disposition: attachment; filename="' . $dl_name . '"');
         header('Content-Length: ' . filesize($zip_file));
         header('Pragma: public');
         header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
