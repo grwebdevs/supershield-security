@@ -975,23 +975,23 @@ $decrypted_rule = SuperShield_AntiTamper::decrypt_vault( $encrypted_vault );
 assert_test( $decrypted_rule === $sample_rule, 'AES-256-GCM vault cleanly decrypted back to original plaintext rule in-memory' );
 
 // --- 12. GitHub Releases Auto-Updater ---
-echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.2.1) ---\n";
-assert_test( version_compare( '2.2.2', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
+echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.3.0) ---\n";
+assert_test( version_compare( '2.4.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
 assert_test( ! version_compare( '2.2.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
 
 $fake_transient = (object) array( 'response' => array() );
 // Populate mock cache
 set_transient( 'supershield_latest_release_cache', array(
-	'version'      => '2.2.2',
-	'tag_name'     => 'v2.2.2',
-	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.2.2/supershield-security.zip',
-	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.2.2',
+	'version'      => '2.4.0',
+	'tag_name'     => 'v2.4.0',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.4.0/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.4.0',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );
 
 $updated_transient = SuperShield_Updater::filter_update_transient( $fake_transient );
-assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.2.2' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
+assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.4.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
 delete_transient( 'supershield_latest_release_cache' );
 
 // 12.2 Secret Custom Login Slug & Direct Bot POST Blocking
