@@ -991,7 +991,7 @@ set_transient( 'supershield_latest_release_cache', array(
 ), 3600 );
 
 $updated_transient = SuperShield_Updater::filter_update_transient( $fake_transient );
-assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.5.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
+assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.6.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
 delete_transient( 'supershield_latest_release_cache' );
 
 // 12.2 Secret Custom Login Slug & Direct Bot POST Blocking
