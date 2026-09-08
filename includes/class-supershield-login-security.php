@@ -168,11 +168,13 @@ class SuperShield_Login_Security {
 			return $error;
 		}
 
-		// Preserve SuperShield security notices (2FA prompts, lockouts, honeypots)
+		// Preserve SuperShield security notices (2FA prompts, lockouts, honeypots, pwned passwords)
 		$preserved_keywords = array(
 			'supershield_ip_locked',
 			'supershield_2fa',
 			'supershield_bot_detected',
+			'supershield_pwned_password',
+			'SECURITY BREACH DETECTED',
 			'SECURITY CODE',
 			'TWO-FACTOR',
 			'AUTHENTICATION REQUIRED',
