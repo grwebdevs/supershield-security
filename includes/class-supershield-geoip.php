@@ -141,28 +141,49 @@ class SuperShield_GeoIP {
 	}
 
 	/**
+	 * Get human-readable country name from ISO-2 country code.
+	 *
+	 * @param string $code
+	 * @return string
+	 */
+	public static function get_country_name( $code ) {
+		$code = strtoupper( trim( (string) $code ) );
+		if ( 'LOCAL' === $code ) {
+			return 'Local / Private';
+		}
+		if ( isset( self::$countries[ $code ] ) ) {
+			return self::$countries[ $code ];
+		}
+		return ( ! empty( $code ) && 'XX' !== $code ) ? $code : 'Unknown Country';
+	}
+
+	/**
 	 * Resolve client IP to 2-letter ISO Country Code.
-	 * Prioritizes Cloudflare headers, then checks local offline lookup and GeoLite2 file if present.
+	 * Prioritizes Cloudflare headers for current client, then checks local offline lookup and GeoLite2 file if present.
 	 *
 	 * @param string $ip Client IP.
 	 * @return string 2-letter ISO Country Code (e.g. 'US', 'PK', 'CN') or 'XX' if unknown.
 	 */
 	public static function resolve_country( $ip = null ) {
-		$ip = ( null !== $ip ) ? trim( (string) $ip ) : SuperShield_Utils::get_client_ip();
+		$client_ip = SuperShield_Utils::get_client_ip();
+		$is_current_client = ( null === $ip || $ip === $client_ip || ( defined( 'SUPERSHIELD_TESTING' ) && SUPERSHIELD_TESTING ) );
+		$ip = ( null !== $ip ) ? trim( (string) $ip ) : $client_ip;
 
-		// 1. Check Cloudflare & Edge Headers
-		$header_keys = array(
-			'HTTP_CF_IPCOUNTRY',
-			'CF-IPCountry',
-			'HTTP_X_COUNTRY_CODE',
-			'HTTP_GEOIP_COUNTRY_CODE',
-		);
+		// 1. Check Cloudflare & Edge Headers only for current active client
+		if ( $is_current_client ) {
+			$header_keys = array(
+				'HTTP_CF_IPCOUNTRY',
+				'CF-IPCountry',
+				'HTTP_X_COUNTRY_CODE',
+				'HTTP_GEOIP_COUNTRY_CODE',
+			);
 
-		foreach ( $header_keys as $key ) {
-			if ( ! empty( $_SERVER[ $key ] ) ) {
-				$code = strtoupper( trim( sanitize_text_field( wp_unslash( $_SERVER[ $key ] ) ) ) );
-				if ( 2 === strlen( $code ) && preg_match( '/^[A-Z]{2}$/', $code ) && 'XX' !== $code && 'T1' !== $code ) {
-					return $code;
+			foreach ( $header_keys as $key ) {
+				if ( ! empty( $_SERVER[ $key ] ) ) {
+					$code = strtoupper( trim( sanitize_text_field( wp_unslash( $_SERVER[ $key ] ) ) ) );
+					if ( 2 === strlen( $code ) && preg_match( '/^[A-Z]{2}$/', $code ) && 'XX' !== $code && 'T1' !== $code ) {
+						return $code;
+					}
 				}
 			}
 		}

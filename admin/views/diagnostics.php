@@ -16,6 +16,12 @@ $tamper_detected = SuperShield_Utils::get_option( 'antitamper_tamper_detected', 
 $telemetry_enabled = SuperShield_Utils::get_option( 'telemetry_enabled', 0 );
 $server_type = SuperShield_Utils::get_server_type();
 
+$alert_emails        = SuperShield_Utils::get_option( 'alert_emails', '' );
+$notify_file_changes = SuperShield_Utils::get_option( 'notify_file_changes', 1 );
+$notify_brute_lockout= SuperShield_Utils::get_option( 'notify_brute_lockout', 1 );
+$notify_malware_found= SuperShield_Utils::get_option( 'notify_malware_found', 1 );
+$notify_admin_login  = SuperShield_Utils::get_option( 'notify_admin_login', 0 );
+
 $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn-shield-primary"><span class="dashicons dashicons-download" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Export System Report</button>';
 ?>
 
@@ -106,6 +112,86 @@ $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn
 					<div style="margin-top:16px;">
 						<button type="submit" class="btn-shield-primary">
 							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Telemetry Preference
+						</button>
+					</div>
+				</form>
+			</div>
+
+			<!-- Instant Security Email Alerts (Wordfence-Style) -->
+			<div class="supershield-panel">
+				<div class="supershield-panel-header">
+					<h2>Instant Security Email Alerts</h2>
+					<span class="badge-tag safe" style="font-size:11px;">100% Free PHP Mail</span>
+				</div>
+
+				<p style="font-size:13px; color:var(--sss-text-secondary); margin-top:0; line-height:1.6;">
+					Receive real-time Wordfence-style alerts when critical security events occur on your site. Delivered directly through your server's native PHP mail &mdash; <strong>zero third-party SMTP limits or fees</strong>.
+				</p>
+
+				<form class="supershield-settings-form">
+					<input type="hidden" name="supershield_section" value="diagnostics" />
+
+					<div style="margin-bottom:20px;">
+						<label style="display:block; font-size:13px; font-weight:600; color:var(--sss-text-primary); margin-bottom:6px;">
+							Alert Email Recipients (Multiple comma-separated emails supported):
+						</label>
+						<input type="text" name="alert_emails" class="regular-text" style="width:100%; max-width:100%; border:1px solid var(--sss-border); border-radius:6px; padding:8px 12px; font-size:13px;" value="<?php echo esc_attr( $alert_emails ); ?>" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>, security@agency.com">
+						<p style="font-size:11px; color:var(--sss-text-secondary); margin:4px 0 0 0;">
+							Leave blank to default to WordPress administrator email: <code><?php echo esc_html( get_option( 'admin_email' ) ); ?></code>
+						</p>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Critical File Integrity Alterations</h4>
+							<p>Alert immediately if core files, plugin components, or unauthorized PHP files appear in uploads.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="notify_file_changes" value="0">
+							<input type="checkbox" name="notify_file_changes" value="1" <?php checked( ! empty( $notify_file_changes ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Brute-Force Attacker IP Lockouts</h4>
+							<p>Alert when a malicious IP exceeds failed login attempts and is quarantined.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="notify_brute_lockout" value="0">
+							<input type="checkbox" name="notify_brute_lockout" value="1" <?php checked( ! empty( $notify_brute_lockout ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Malware Scan Threats Discovered</h4>
+							<p>Alert when deep heuristic scans detect malicious web shells or backdoors.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="notify_malware_found" value="0">
+							<input type="checkbox" name="notify_malware_found" value="1" <?php checked( ! empty( $notify_malware_found ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Administrator Login Notification</h4>
+							<p>Alert when an administrator signs in, recording client IP, country, and browser.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="notify_admin_login" value="0">
+							<input type="checkbox" name="notify_admin_login" value="1" <?php checked( ! empty( $notify_admin_login ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<div style="margin-top:16px;">
+						<button type="submit" class="btn-shield-primary">
+							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Email Alert Settings
 						</button>
 					</div>
 				</form>

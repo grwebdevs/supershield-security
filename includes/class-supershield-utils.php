@@ -20,14 +20,87 @@ class SuperShield_Utils {
 	 *
 	 * @return string Validated IP address or '127.0.0.1' fallback.
 	 */
+	/**
+	 * Official Cloudflare IPv4 & IPv6 CIDR Subnet Ranges.
+	 *
+	 * @var array<string>
+	 */
+	private static $cloudflare_ranges = array(
+		'173.245.48.0/20',
+		'103.21.244.0/22',
+		'103.22.200.0/22',
+		'103.31.4.0/22',
+		'141.101.64.0/18',
+		'108.162.192.0/18',
+		'190.93.240.0/20',
+		'188.114.96.0/20',
+		'197.234.240.0/22',
+		'198.41.128.0/17',
+		'162.158.0.0/15',
+		'104.16.0.0/13',
+		'104.24.0.0/14',
+		'172.64.0.0/13',
+		'131.0.72.0/22',
+		'2400:cb00::/32',
+		'2606:4700::/32',
+		'2803:f800::/32',
+		'2405:b500::/32',
+		'2405:8100::/32',
+		'2a06:98c0::/29',
+		'2c0f:f248::/32',
+	);
+
+	/**
+	 * Check if an IP address belongs to Cloudflare's edge proxy network.
+	 *
+	 * @param string $ip
+	 * @return bool
+	 */
+	public static function is_cloudflare_ip( $ip ) {
+		$ip = trim( (string) $ip );
+		if ( empty( $ip ) ) {
+			return false;
+		}
+		foreach ( self::$cloudflare_ranges as $range ) {
+			if ( self::ip_in_range( $ip, $range ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Check if an IP is a local loopback or private subnet.
+	 *
+	 * @param string $ip
+	 * @return bool
+	 */
+	public static function is_loopback_or_private( $ip ) {
+		$ip = trim( (string) $ip );
+		if ( '127.0.0.1' === $ip || '::1' === $ip ) {
+			return true;
+		}
+		return ( ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) );
+	}
+
+	/**
+	 * Retrieve real client IP address with protection against header spoofing.
+	 *
+	 * Only trusts proxy headers (Cloudflare / X-Forwarded-For) if trust_proxy_headers
+	 * is enabled, REMOTE_ADDR is an established internal proxy, or REMOTE_ADDR
+	 * belongs to Cloudflare's verified network ranges.
+	 *
+	 * @return string Validated IP address or '127.0.0.1' fallback.
+	 */
 	public static function get_client_ip() {
 		$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? trim( (string) $_SERVER['REMOTE_ADDR'] ) : '127.0.0.1';
 
 		// Determine if proxy headers can be trusted
 		$trust_proxy = self::get_option( 'trust_proxy_headers', 0 );
 		$is_private_remote = ! filter_var( $remote_addr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE );
+		$is_cloudflare_remote = self::is_cloudflare_ip( $remote_addr );
 
-		if ( $trust_proxy || $is_private_remote ) {
+		if ( $trust_proxy || $is_private_remote || $is_cloudflare_remote ) {
 			$headers = array(
 				'HTTP_CF_CONNECTING_IP',
 				'HTTP_X_REAL_IP',

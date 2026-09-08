@@ -5,7 +5,7 @@
  * @package    SuperShield_Security
  * @subpackage SuperShield_Security/admin
  * @author     Ghulam Rasool <grwebdevs.com>
- * @version    2.1.0
+ * @version    2.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -37,6 +37,7 @@ class SuperShield_Admin {
 		add_action( 'wp_ajax_supershield_setup_2fa', array( $this, 'ajax_setup_2fa' ) );
 		add_action( 'wp_ajax_supershield_verify_2fa', array( $this, 'ajax_verify_2fa' ) );
 		add_action( 'wp_ajax_supershield_disable_2fa', array( $this, 'ajax_disable_2fa' ) );
+		add_action( 'wp_ajax_supershield_destroy_sessions', array( $this, 'ajax_destroy_sessions' ) );
 	}
 
 	/**
@@ -356,8 +357,10 @@ class SuperShield_Admin {
 			'waf_enabled',
 			'waf_bypass_admin',
 			'auto_block_waf_violators',
+			'rate_limit_enabled',
 			'bruteforce_protection',
 			'enable_login_honeypot',
+			'pwned_passwords_check',
 			'block_uploads_php',
 			'disable_xmlrpc',
 			'hide_wp_version',
@@ -371,14 +374,17 @@ class SuperShield_Admin {
 			'geoip_enabled',
 			'geoip_protect_login_only',
 			'2fa_enabled',
+			'daily_scan_cron_enabled',
 			'telemetry_enabled',
 		);
 
 		$section_map = array(
-			'firewall'    => array( 'waf_enabled', 'auto_block_waf_violators', 'waf_bypass_admin', 'trust_proxy_headers', 'geoip_enabled', 'geoip_protect_login_only' ),
-			'hardening'   => array( 'block_uploads_php', 'disable_xmlrpc', 'block_user_enumeration', 'disallow_file_edit', 'security_headers', 'hide_wp_version', 'protect_config_files', 'block_hidden_files' ),
-			'login'       => array( 'bruteforce_protection', 'enable_login_honeypot', '2fa_enabled' ),
-			'diagnostics' => array( 'telemetry_enabled' ),
+			'firewall'     => array( 'waf_enabled', 'auto_block_waf_violators', 'rate_limit_enabled', 'waf_bypass_admin', 'trust_proxy_headers', 'geoip_enabled', 'geoip_protect_login_only' ),
+			'access_lists' => array(),
+			'hardening'    => array( 'block_uploads_php', 'disable_xmlrpc', 'block_user_enumeration', 'disallow_file_edit', 'security_headers', 'hide_wp_version', 'protect_config_files', 'block_hidden_files' ),
+			'login'        => array( 'bruteforce_protection', 'enable_login_honeypot', '2fa_enabled', 'pwned_passwords_check' ),
+			'scanner'      => array( 'daily_scan_cron_enabled' ),
+			'diagnostics'  => array( 'telemetry_enabled', 'daily_scan_cron_enabled', 'notify_file_changes', 'notify_brute_lockout', 'notify_malware_found', 'notify_admin_login' ),
 		);
 
 		$section = isset( $_POST['supershield_section'] ) ? sanitize_text_field( wp_unslash( $_POST['supershield_section'] ) ) : '';
@@ -446,10 +452,18 @@ class SuperShield_Admin {
 			$current_options['ip_blacklist'] = array_filter( array_map( 'trim', explode( "\n", $blacklist_raw ) ) );
 		}
 
+		if ( isset( $_POST['alert_emails'] ) ) {
+			$current_options['alert_emails'] = sanitize_textarea_field( wp_unslash( $_POST['alert_emails'] ) );
+		}
+
 		update_option( 'supershield_settings', $current_options );
 
 		if ( ! empty( $current_options['block_uploads_php'] ) ) {
 			SuperShield_Hardening::ensure_uploads_htaccess_immunity();
+		}
+
+		if ( class_exists( 'SuperShield_Scanner' ) ) {
+			SuperShield_Scanner::sync_cron_schedule();
 		}
 
 		SuperShield_DB::log_event( 'admin_action', 'Security settings updated.' );
@@ -631,6 +645,26 @@ class SuperShield_Admin {
 
 		SuperShield_DB::log_event( 'admin_action', '2FA disabled for user: ' . wp_get_current_user()->user_login );
 		wp_send_json_success( array( 'message' => 'Two-Factor Authentication has been deactivated.' ) );
+	}
+
+	/**
+	 * AJAX: Destroy all other active sessions for current user.
+	 */
+	public function ajax_destroy_sessions() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! is_user_logged_in() ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 401 );
+		}
+
+		if ( class_exists( 'WP_Session_Tokens' ) ) {
+			$manager = WP_Session_Tokens::get_instance( get_current_user_id() );
+			$token = wp_get_session_token();
+			$manager->destroy_others( $token );
+		}
+
+		SuperShield_DB::log_event( 'admin_action', 'All other active user sessions destroyed by ' . wp_get_current_user()->user_login );
+		wp_send_json_success( array( 'message' => 'All other devices and active sessions have been safely logged out.' ) );
 	}
 
 	/**

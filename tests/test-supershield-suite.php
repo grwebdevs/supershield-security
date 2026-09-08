@@ -16,7 +16,7 @@ define( 'ABSPATH', str_replace( '\\', '/', __DIR__ . '/../' ) );
 define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content/' );
 define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . 'plugins/' );
 define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . 'mu-plugins/' );
-define( 'SUPERSHIELD_VERSION', '2.0.0' );
+define( 'SUPERSHIELD_VERSION', '2.2.0' );
 define( 'SUPERSHIELD_PLUGIN_DIR', ABSPATH );
 define( 'SUPERSHIELD_BASENAME', 'supershield-security/supershield-security.php' );
 define( 'AUTH_KEY', 'test_auth_key_1234567890abcdef' );
@@ -292,6 +292,28 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 if ( ! function_exists( 'get_bloginfo' ) ) {
 	function get_bloginfo( $show = 'name' ) {
 		return '6.7';
+	}
+}
+
+$mock_cron_events = array();
+if ( ! function_exists( 'wp_next_scheduled' ) ) {
+	function wp_next_scheduled( $hook ) {
+		global $mock_cron_events;
+		return isset( $mock_cron_events[ $hook ] ) ? $mock_cron_events[ $hook ] : false;
+	}
+}
+if ( ! function_exists( 'wp_schedule_event' ) ) {
+	function wp_schedule_event( $timestamp, $recurrence, $hook ) {
+		global $mock_cron_events;
+		$mock_cron_events[ $hook ] = $timestamp;
+		return true;
+	}
+}
+if ( ! function_exists( 'wp_clear_scheduled_hook' ) ) {
+	function wp_clear_scheduled_hook( $hook ) {
+		global $mock_cron_events;
+		unset( $mock_cron_events[ $hook ] );
+		return true;
 	}
 }
 
@@ -935,23 +957,23 @@ $decrypted_rule = SuperShield_AntiTamper::decrypt_vault( $encrypted_vault );
 assert_test( $decrypted_rule === $sample_rule, 'AES-256-GCM vault cleanly decrypted back to original plaintext rule in-memory' );
 
 // --- 12. GitHub Releases Auto-Updater ---
-echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.0.0) ---\n";
-assert_test( version_compare( '2.0.1', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
-assert_test( ! version_compare( '1.9.9', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
+echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.2.0) ---\n";
+assert_test( version_compare( '2.2.1', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
+assert_test( ! version_compare( '2.1.9', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
 
 $fake_transient = (object) array( 'response' => array() );
 // Populate mock cache
 set_transient( 'supershield_latest_release_cache', array(
-	'version'      => '2.1.0',
-	'tag_name'     => 'v2.1.0',
-	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.1.0/supershield-security.zip',
-	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.1.0',
+	'version'      => '2.2.1',
+	'tag_name'     => 'v2.2.1',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.2.1/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.2.1',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );
 
 $updated_transient = SuperShield_Updater::filter_update_transient( $fake_transient );
-assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.1.0' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
+assert_test( isset( $updated_transient->response[ SUPERSHIELD_BASENAME ] ) && '2.2.1' === $updated_transient->response[ SUPERSHIELD_BASENAME ]->new_version, 'GitHub Releases updater successfully injects update package into WordPress transient' );
 delete_transient( 'supershield_latest_release_cache' );
 
 // 12.2 Secret Custom Login Slug & Direct Bot POST Blocking
@@ -996,7 +1018,73 @@ assert_test( strpos( $report['markdown'], 'Ghulam Rasool' ) !== false, 'Report i
 assert_test( strpos( $report['json'], 'test_auth_key' ) === false, 'Sensitive authentication keys stripped from diagnostics export' );
 assert_test( strpos( $report['markdown'], 'Waf Active' ) !== false || strpos( $report['markdown'], 'WAF' ) !== false, 'Diagnostics contains active security shield audit' );
 
-// --- 14. Clean up temporary test files ---
+// --- 14. v2.2.0 Enterprise Features (Rate Limit, Cloudflare, GeoIP Names, 2FA QR, Pwned Passwords) ---
+echo "\n--- 14. Testing v2.2.0 Enterprise Capabilities ---\n";
+
+// 14.1 Cloudflare IP Detection
+assert_test( SuperShield_Utils::is_cloudflare_ip( '172.71.182.20' ), 'is_cloudflare_ip correctly identifies Cloudflare edge proxy IPv4' );
+assert_test( SuperShield_Utils::is_cloudflare_ip( '104.22.65.100' ), 'is_cloudflare_ip correctly identifies Cloudflare edge range 104.16.0.0/13' );
+assert_test( ! SuperShield_Utils::is_cloudflare_ip( '8.8.8.8' ), 'is_cloudflare_ip rejects non-Cloudflare public IP' );
+assert_test( SuperShield_Utils::is_loopback_or_private( '127.0.0.1' ), 'is_loopback_or_private identifies 127.0.0.1' );
+assert_test( SuperShield_Utils::is_loopback_or_private( '192.168.1.50' ), 'is_loopback_or_private identifies private class C' );
+assert_test( ! SuperShield_Utils::is_loopback_or_private( '93.184.216.34' ), 'is_loopback_or_private rejects public internet IP' );
+
+// 14.2 GeoIP Country Name Lookup
+assert_test( 'United States' === SuperShield_GeoIP::get_country_name( 'US' ), 'get_country_name resolves US to United States' );
+assert_test( 'Pakistan' === SuperShield_GeoIP::get_country_name( 'PK' ), 'get_country_name resolves PK to Pakistan' );
+assert_test( 'United Kingdom' === SuperShield_GeoIP::get_country_name( 'GB' ), 'get_country_name resolves GB to United Kingdom' );
+assert_test( 'Germany' === SuperShield_GeoIP::get_country_name( 'DE' ), 'get_country_name resolves DE to Germany' );
+
+// 14.3 2FA QR Code & otpauth URI strict format
+$otpauth_url = SuperShield_2FA::get_otpauth_url( 'testadmin', 'JBSWY3DPEHPK3PXP' );
+assert_test( strpos( $otpauth_url, 'otpauth://totp/SuperShield:testadmin?' ) === 0, 'otpauth URL label format strictly matches SuperShield:user prefix' );
+assert_test( strpos( $otpauth_url, 'issuer=SuperShield' ) !== false, 'otpauth URL contains matching issuer query parameter' );
+
+$svg_qr = SuperShield_QRCode::svg( $otpauth_url, 260 );
+assert_test( strpos( $svg_qr, '<svg' ) !== false && ( strpos( $svg_qr, '<rect' ) !== false || strpos( $svg_qr, '<path' ) !== false ), 'SuperShield_QRCode generates valid XML SVG vector QR code' );
+assert_test( strpos( $svg_qr, 'viewBox=' ) !== false, 'SuperShield_QRCode SVG includes proper viewBox' );
+
+// 14.4 Anti-DDoS Rate Limiter
+SuperShield_Utils::update_option( 'rate_limit_enabled', 1 );
+SuperShield_Utils::update_option( 'rate_limit_max_requests', 3 );
+$test_rate_ip = '198.51.100.99';
+delete_transient( 'ss_rl_' . md5( $test_rate_ip ) );
+
+// Requests 1-3 should pass cleanly
+SuperShield_WAF::inspect_rate_limit( $test_rate_ip );
+SuperShield_WAF::inspect_rate_limit( $test_rate_ip );
+SuperShield_WAF::inspect_rate_limit( $test_rate_ip );
+
+$rate_blocked = false;
+try {
+	// Request 4 should exceed limit and throw in testing mode
+	SuperShield_WAF::inspect_rate_limit( $test_rate_ip );
+} catch ( RuntimeException $e ) {
+	if ( strpos( $e->getMessage(), 'RATE_LIMIT_BLOCK' ) !== false ) {
+		$rate_blocked = true;
+	}
+}
+assert_test( $rate_blocked, 'Anti-DDoS volumetric rate limiter successfully throttles burst flood with 429' );
+delete_transient( 'ss_rl_' . md5( $test_rate_ip ) );
+SuperShield_Utils::update_option( 'rate_limit_enabled', 0 );
+
+// 14.5 Pwned Passwords Check
+assert_test( 0 === SuperShield_Login_Security::check_pwned_password( '' ), 'check_pwned_password handles empty input safely' );
+// Mock cache a breached test password
+$sample_pwned_hash = strtoupper( sha1( 'password123' ) );
+set_transient( 'ss_pwned_' . md5( $sample_pwned_hash ), 54321, 3600 );
+assert_test( 54321 === SuperShield_Login_Security::check_pwned_password( 'password123' ), 'check_pwned_password detects breached password via cache/API' );
+delete_transient( 'ss_pwned_' . md5( $sample_pwned_hash ) );
+
+// 14.6 Daily Scan Cron Sync
+SuperShield_Utils::update_option( 'daily_scan_cron_enabled', 1 );
+SuperShield_Scanner::sync_cron_schedule();
+assert_test( (bool) wp_next_scheduled( 'supershield_daily_scan_cron' ), 'sync_cron_schedule successfully registers supershield_daily_scan_cron event' );
+SuperShield_Utils::update_option( 'daily_scan_cron_enabled', 0 );
+SuperShield_Scanner::sync_cron_schedule();
+assert_test( ! wp_next_scheduled( 'supershield_daily_scan_cron' ), 'sync_cron_schedule successfully clears supershield_daily_scan_cron event when disabled' );
+
+// --- 15. Clean up temporary test files ---
 @unlink( $infected_file );
 @unlink( $tmp_uploads . '/shell.php' );
 @unlink( $tmp_uploads . '/avatar.php.jpg' );
@@ -1018,7 +1106,7 @@ if ( is_array( $backup_files ) ) {
 echo "\n========================================================\n";
 echo " Results: $pass_count of $test_count tests passed.\n";
 if ( $pass_count === $test_count ) {
-	echo " ALL 2.0.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
+	echo " ALL 2.2.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
 } else {
 	echo " SOME TESTS FAILED!\n";
 }

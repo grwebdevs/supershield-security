@@ -34,6 +34,11 @@ class SuperShield_WAF {
 			self::block_request( 'IP Blocked: ' . $block_data['reason'], 'ip_blocked', $client_ip );
 		}
 
+		// Anti-DDoS Volumetric Rate Limiter
+		if ( SuperShield_Utils::get_option( 'rate_limit_enabled', 0 ) ) {
+			self::inspect_rate_limit( $client_ip );
+		}
+
 		// GeoIP Country Inspection
 		if ( class_exists( 'SuperShield_GeoIP' ) ) {
 			SuperShield_GeoIP::inspect_request( $client_ip );
@@ -572,7 +577,188 @@ class SuperShield_WAF {
 					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
 				</div>
 				<div class="footer">
-					Protected by <strong>SuperShield Security Suite v2.0.0</strong><br>
+					Protected by <strong>SuperShield Security Suite v2.2.0</strong><br>
+					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
+				</div>
+			</div>
+		</body>
+		</html>
+		<?php
+		exit;
+	}
+
+	/**
+	 * Inspect request frequency and apply anti-DDoS / volumetric rate limiting.
+	 *
+	 * @param string $ip Client IP.
+	 */
+	public static function inspect_rate_limit( $ip ) {
+		if ( empty( $ip ) || SuperShield_Utils::is_loopback_or_private( $ip ) || SuperShield_Utils::is_cloudflare_ip( $ip ) ) {
+			return;
+		}
+
+		if ( SuperShield_IP_Manager::is_whitelisted( $ip ) ) {
+			return;
+		}
+
+		$window = 60; // 60 seconds rolling window
+		$max_requests = (int) SuperShield_Utils::get_option( 'rate_limit_max_requests', 120 );
+		if ( $max_requests <= 0 ) {
+			$max_requests = 120;
+		}
+
+		$transient_key = 'ss_rl_' . md5( $ip );
+		$bucket = function_exists( 'get_transient' ) ? get_transient( $transient_key ) : false;
+		$now = time();
+
+		if ( false === $bucket || ! is_array( $bucket ) || ! isset( $bucket['start'] ) || ! isset( $bucket['count'] ) ) {
+			$bucket = array(
+				'start' => $now,
+				'count' => 1,
+			);
+			if ( function_exists( 'set_transient' ) ) {
+				set_transient( $transient_key, $bucket, $window );
+			}
+			return;
+		}
+
+		$bucket['count']++;
+		$elapsed = $now - $bucket['start'];
+		$remaining_time = max( 1, $window - $elapsed );
+
+		if ( $bucket['count'] > $max_requests ) {
+			// Throttle violation
+			if ( class_exists( 'SuperShield_DB' ) ) {
+				SuperShield_DB::log_event(
+					'RATE_LIMIT',
+					"Volumetric rate limit exceeded: {$bucket['count']} requests in {$elapsed}s (threshold: {$max_requests}/min)",
+					isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '',
+					$ip
+				);
+			}
+
+			if ( class_exists( 'SuperShield_Telemetry' ) ) {
+				SuperShield_Telemetry::dispatch_threat_telemetry(
+					'Anti-DDoS Volumetric Throttling',
+					"IP {$ip} exceeded threshold of {$max_requests} req/min",
+					isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : ''
+				);
+			}
+
+			self::drop_rate_limit( $ip, $remaining_time );
+		} else {
+			if ( function_exists( 'set_transient' ) ) {
+				set_transient( $transient_key, $bucket, $remaining_time );
+			}
+		}
+	}
+
+	/**
+	 * Send 429 Too Many Requests response with Retry-After header.
+	 *
+	 * @param string $ip Client IP.
+	 * @param int    $retry_after Cooldown in seconds.
+	 */
+	public static function drop_rate_limit( $ip, $retry_after = 60 ) {
+		if ( defined( 'SUPERSHIELD_TESTING' ) && SUPERSHIELD_TESTING ) {
+			throw new RuntimeException( "RATE_LIMIT_BLOCK: Rate limit exceeded ($retry_after)" );
+		}
+
+		$ref_id = '#SSS-RL-' . strtoupper( substr( md5( $ip . microtime() ), 0, 8 ) );
+
+		if ( ! headers_sent() ) {
+			if ( function_exists( 'status_header' ) ) {
+				status_header( 429 );
+			} elseif ( function_exists( 'http_response_code' ) ) {
+				http_response_code( 429 );
+			}
+			header( 'Retry-After: ' . (int) $retry_after );
+			if ( function_exists( 'nocache_headers' ) ) {
+				nocache_headers();
+			}
+			header( 'Content-Type: text/html; charset=utf-8' );
+			header( 'X-Frame-Options: SAMEORIGIN' );
+			header( 'X-Content-Type-Options: nosniff' );
+		}
+		?>
+		<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>429 Too Many Requests — SuperShield Security</title>
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				body {
+					background-color: #0b0f19;
+					color: #e2e8f0;
+					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					min-height: 100vh;
+					padding: 20px;
+				}
+				.shield-card {
+					background: #111827;
+					border: 1px solid #1f2937;
+					border-radius: 14px;
+					padding: 44px;
+					max-width: 600px;
+					width: 100%;
+					box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+					text-align: center;
+					position: relative;
+				}
+				.shield-icon {
+					width: 72px;
+					height: 72px;
+					background: rgba(245, 158, 11, 0.12);
+					border: 2px solid #f59e0b;
+					border-radius: 50%;
+					display: inline-flex;
+					align-items: center;
+					justify-content: center;
+					margin-bottom: 24px;
+					color: #f59e0b;
+					box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+				}
+				.shield-icon svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2; }
+				h1 { font-size: 24px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; letter-spacing: -0.5px; }
+				p.desc { font-size: 15px; color: #94a3b8; line-height: 1.6; margin-bottom: 26px; }
+				.info-box {
+					background: #0b0f19;
+					border: 1px solid #1f2937;
+					border-radius: 10px;
+					padding: 18px 20px;
+					font-size: 13px;
+					text-align: left;
+					color: #cbd5e1;
+					margin-bottom: 26px;
+					line-height: 1.9;
+				}
+				.info-box strong { color: #f1f5f9; }
+				.info-box code { color: #f59e0b; font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; }
+				.footer { font-size: 12px; color: #64748b; line-height: 1.6; }
+				.footer a { color: #6366f1; text-decoration: none; font-weight: 600; }
+				.footer a:hover { text-decoration: underline; }
+			</style>
+		</head>
+		<body>
+			<div class="shield-card">
+				<div class="shield-icon">
+					<svg viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+				</div>
+				<h1>Too Many Requests (Rate Limit Exceeded)</h1>
+				<p class="desc">Volumetric flood protection has temporarily throttled your connection due to unusually high request frequency. Please wait a moment before refreshing.</p>
+				<div class="info-box">
+					<div><strong>Incident ID:</strong> <code><?php echo esc_html( $ref_id ); ?></code></div>
+					<div><strong>Client IP:</strong> <code><?php echo esc_html( $ip ); ?></code></div>
+					<div><strong>Cool-down Window:</strong> <code><?php echo (int) $retry_after; ?> seconds</code></div>
+					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
+				</div>
+				<div class="footer">
+					Protected by <strong>SuperShield Security Suite v2.2.0</strong><br>
 					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
 				</div>
 			</div>

@@ -67,6 +67,12 @@ class SuperShield_AntiTamper {
 				'CRITICAL: Plugin self-integrity verification failed! Possible code tampering detected.',
 				wp_json_encode( $results['tampered_files'] )
 			);
+
+			// Dispatch instant Wordfence-style email notification
+			if ( class_exists( 'SuperShield_Notifier' ) && ! empty( $results['tampered_files'][0] ) ) {
+				$first = $results['tampered_files'][0];
+				SuperShield_Notifier::notify_file_tampering( $first['file'], $first['reason'] );
+			}
 		} else {
 			SuperShield_Utils::update_option( 'antitamper_tamper_detected', 0 );
 		}
@@ -224,6 +230,7 @@ class SuperShield_AntiTamper {
 			'includes/class-supershield-utils.php'         => '',
 			'includes/class-supershield-updater.php'       => '',
 			'includes/class-supershield-telemetry.php'     => '',
+			'includes/class-supershield-notifier.php'      => '',
 			'admin/class-supershield-admin.php'            => '',
 		);
 
@@ -265,6 +272,7 @@ class SuperShield_AntiTamper {
 			'includes/class-supershield-utils.php',
 			'includes/class-supershield-updater.php',
 			'includes/class-supershield-telemetry.php',
+			'includes/class-supershield-notifier.php',
 			'admin/class-supershield-admin.php',
 		);
 

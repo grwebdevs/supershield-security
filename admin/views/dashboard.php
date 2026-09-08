@@ -1,11 +1,11 @@
-﻿<?php
+<?php
 /**
  * Cybersecurity Command Center Dashboard View — SuperShield Security
  * Handcrafted Light Theme & Modern SaaS Console
  *
  * @package SuperShield_Security
  * @author  Ghulam Rasool <grwebdevs.com>
- * @version 2.1.0
+ * @version 2.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

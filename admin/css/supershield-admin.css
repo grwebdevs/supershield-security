@@ -2,7 +2,7 @@
  * SuperShield Security — Enterprise Cybersecurity Suite Stylesheet
  * Handcrafted Light Theme & Modern SaaS Console
  * Author: Ghulam Rasool (Founder & Lead Security Engineer, grwebdevs.com)
- * Version 2.1.0
+ * Version 2.2.0
  */
 
 /* ==========================================================================
@@ -996,4 +996,184 @@ input:checked + .slider:before {
 
 .supershield-footer a:hover {
 	text-decoration: underline !important;
+}
+
+/* ==========================================================================
+   Floating SaaS Toast Notifications
+   ========================================================================== */
+#supershield-alert-box.supershield-alert {
+	position: fixed !important;
+	top: 48px !important;
+	right: 28px !important;
+	z-index: 999999 !important;
+	min-width: 320px !important;
+	max-width: 480px !important;
+	padding: 14px 18px !important;
+	border-radius: 10px !important;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+	font-size: 13.5px !important;
+	line-height: 1.45 !important;
+	font-weight: 500 !important;
+	display: none;
+	align-items: center !important;
+	gap: 12px !important;
+	backdrop-filter: blur(8px) !important;
+	-webkit-backdrop-filter: blur(8px) !important;
+	animation: sssSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+@keyframes sssSlideIn {
+	0% {
+		opacity: 0;
+		transform: translateY(-16px) scale(0.96);
+	}
+	100% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+#supershield-alert-box.supershield-alert.success {
+	background: #f0fdf4 !important;
+	border: 1px solid #86efac !important;
+	border-left: 5px solid #16a34a !important;
+	color: #14532d !important;
+}
+
+#supershield-alert-box.supershield-alert.error {
+	background: #fef2f2 !important;
+	border: 1px solid #fca5a5 !important;
+	border-left: 5px solid #dc2626 !important;
+	color: #7f1d1d !important;
+}
+
+#supershield-alert-box .supershield-alert-icon {
+	flex-shrink: 0 !important;
+	font-size: 20px !important;
+	width: 20px !important;
+	height: 20px !important;
+}
+
+#supershield-alert-box.success .supershield-alert-icon {
+	color: #16a34a !important;
+}
+
+#supershield-alert-box.error .supershield-alert-icon {
+	color: #dc2626 !important;
+}
+
+#supershield-alert-box .supershield-alert-message {
+	flex: 1 !important;
+	word-break: break-word !important;
+}
+
+#supershield-alert-box .supershield-alert-close {
+	background: none !important;
+	border: none !important;
+	cursor: pointer !important;
+	font-size: 18px !important;
+	line-height: 1 !important;
+	color: #94a3b8 !important;
+	padding: 2px !important;
+	border-radius: 4px !important;
+	margin-left: 6px !important;
+	transition: color 0.15s ease !important;
+}
+
+#supershield-alert-box .supershield-alert-close:hover {
+	color: #334155 !important;
+}
+
+/* ==========================================================================
+   Filter Pills & Telemetry Tabs
+   ========================================================================== */
+.supershield-filter-tabs {
+	display: flex !important;
+	align-items: center !important;
+	gap: 8px !important;
+	flex-wrap: wrap !important;
+	margin-bottom: 16px !important;
+}
+
+.filter-tab-pill {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 6px !important;
+	padding: 6px 14px !important;
+	border-radius: 20px !important;
+	font-size: 12.5px !important;
+	font-weight: 500 !important;
+	text-decoration: none !important;
+	color: #475569 !important;
+	background: #f1f5f9 !important;
+	border: 1px solid #e2e8f0 !important;
+	transition: all 0.15s ease !important;
+}
+
+.filter-tab-pill:hover {
+	background: #e2e8f0 !important;
+	color: #0f172a !important;
+}
+
+.filter-tab-pill.active {
+	background: #2563eb !important;
+	color: #ffffff !important;
+	border-color: #1d4ed8 !important;
+	font-weight: 600 !important;
+	box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* ==========================================================================
+   Copy Secret Key Container
+   ========================================================================== */
+.copy-key-wrapper {
+	position: relative !important;
+	display: flex !important;
+	align-items: stretch !important;
+	margin-bottom: 16px !important;
+	border-radius: 6px !important;
+	overflow: hidden !important;
+	border: 1px solid #cbd5e1 !important;
+	background: #ffffff !important;
+}
+
+.copy-key-wrapper code {
+	flex: 1 !important;
+	padding: 10px 14px !important;
+	background: transparent !important;
+	border: none !important;
+	border-radius: 0 !important;
+	font-size: 13.5px !important;
+	color: #1d4ed8 !important;
+	letter-spacing: 2px !important;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+	word-break: break-all !important;
+	margin: 0 !important;
+}
+
+.btn-copy-key {
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 4px !important;
+	padding: 0 16px !important;
+	background: #f8fafc !important;
+	border: none !important;
+	border-left: 1px solid #cbd5e1 !important;
+	color: #334155 !important;
+	font-size: 12px !important;
+	font-weight: 600 !important;
+	cursor: pointer !important;
+	transition: all 0.15s ease !important;
+}
+
+.btn-copy-key:hover {
+	background: #f1f5f9 !important;
+	color: #0f172a !important;
+}
+
+.btn-copy-key.copied {
+	background: #ecfdf5 !important;
+	color: #047857 !important;
 }

@@ -173,17 +173,43 @@ class SuperShield_QRCode {
 	 * @param int    $ec_level
 	 * @return string SVG markup.
 	 */
+	/**
+	 * Generate SVG markup for QR Code with standard 4-module quiet zone.
+	 *
+	 * @param string $text
+	/**
+	 * Render pure SVG vector QR code. Alias of get_svg().
+	 *
+	 * @param string $text
+	 * @param int    $pixel_size
+	 * @param int    $ec_level
+	 * @return string
+	 */
+	public static function svg( $text, $pixel_size = 200, $ec_level = self::EC_L ) {
+		return self::get_svg( $text, $pixel_size, $ec_level );
+	}
+
+	/**
+	 * Render pure SVG vector QR code.
+	 *
+	 * @param string $text
+	 * @param int    $pixel_size
+	 * @param int    $ec_level
+	 * @return string SVG markup.
+	 */
 	public static function get_svg( $text, $pixel_size = 200, $ec_level = self::EC_L ) {
 		$matrix = self::encode( $text, $ec_level );
 		$size = count( $matrix );
-		$box = $pixel_size / ( $size + 4 ); // 2 module quiet zone
+		$quiet_zone = 4; // ISO/IEC 18004 specifies minimum 4 module quiet zone
+		$grid_size = $size + ( $quiet_zone * 2 );
+		$box = $pixel_size / $grid_size;
 
 		$rects = '';
 		for ( $r = 0; $r < $size; $r++ ) {
 			for ( $c = 0; $c < $size; $c++ ) {
 				if ( 1 === $matrix[ $r ][ $c ] ) {
-					$x = round( ( $c + 2 ) * $box, 2 );
-					$y = round( ( $r + 2 ) * $box, 2 );
+					$x = round( ( $c + $quiet_zone ) * $box, 2 );
+					$y = round( ( $r + $quiet_zone ) * $box, 2 );
 					$w = round( $box, 2 );
 					$rects .= "<rect x='{$x}' y='{$y}' width='{$w}' height='{$w}' fill='#0f172a'/>\n";
 				}
@@ -208,6 +234,127 @@ class SuperShield_QRCode {
 	}
 
 	/**
+	 * Test mask condition for coordinates (r, c).
+	 *
+	 * @param int $mask_id
+	 * @param int $r
+	 * @param int $c
+	 * @return bool
+	 */
+	private static function mask_cond( $mask_id, $r, $c ) {
+		switch ( $mask_id ) {
+			case 0: return ( ( $r + $c ) % 2 === 0 );
+			case 1: return ( $r % 2 === 0 );
+			case 2: return ( $c % 3 === 0 );
+			case 3: return ( ( $r + $c ) % 3 === 0 );
+			case 4: return ( ( (int)( $r / 2 ) + (int)( $c / 3 ) ) % 2 === 0 );
+			case 5: return ( ( ( $r * $c ) % 2 + ( $r * $c ) % 3 ) === 0 );
+			case 6: return ( ( ( ( $r * $c ) % 2 + ( $r * $c ) % 3 ) % 2 ) === 0 );
+			case 7: return ( ( ( ( $r + $c ) % 2 + ( $r * $c ) % 3 ) % 2 ) === 0 );
+		}
+		return false;
+	}
+
+	/**
+	 * Calculate ISO/IEC 18004 penalty score for a masked matrix.
+	 *
+	 * @param array<array<int>> $matrix
+	 * @param int               $size
+	 * @return int
+	 */
+	private static function penalty_score( &$matrix, $size ) {
+		$penalty = 0;
+
+		// 1. Five or more consecutive modules of identical color
+		for ( $r = 0; $r < $size; $r++ ) {
+			$run = 1;
+			for ( $c = 1; $c < $size; $c++ ) {
+				if ( $matrix[ $r ][ $c ] === $matrix[ $r ][ $c - 1 ] ) {
+					$run++;
+				} else {
+					if ( $run >= 5 ) {
+						$penalty += 3 + ( $run - 5 );
+					}
+					$run = 1;
+				}
+			}
+			if ( $run >= 5 ) {
+				$penalty += 3 + ( $run - 5 );
+			}
+		}
+
+		for ( $c = 0; $c < $size; $c++ ) {
+			$run = 1;
+			for ( $r = 1; $r < $size; $r++ ) {
+				if ( $matrix[ $r ][ $c ] === $matrix[ $r - 1 ][ $c ] ) {
+					$run++;
+				} else {
+					if ( $run >= 5 ) {
+						$penalty += 3 + ( $run - 5 );
+					}
+					$run = 1;
+				}
+			}
+			if ( $run >= 5 ) {
+				$penalty += 3 + ( $run - 5 );
+			}
+		}
+
+		// 2. 2x2 blocks of same color
+		for ( $r = 0; $r < $size - 1; $r++ ) {
+			for ( $c = 0; $c < $size - 1; $c++ ) {
+				$val = $matrix[ $r ][ $c ];
+				if ( $matrix[ $r + 1 ][ $c ] === $val && $matrix[ $r ][ $c + 1 ] === $val && $matrix[ $r + 1 ][ $c + 1 ] === $val ) {
+					$penalty += 3;
+				}
+			}
+		}
+
+		// 3. 1:1:3:1:1 finder-like patterns
+		for ( $r = 0; $r < $size; $r++ ) {
+			for ( $c = 0; $c <= $size - 11; $c++ ) {
+				$slice = '';
+				for ( $k = 0; $k < 11; $k++ ) {
+					$slice .= $matrix[ $r ][ $c + $k ];
+				}
+				if ( '10111010000' === $slice || '00001011101' === $slice ) {
+					$penalty += 40;
+				}
+			}
+		}
+
+		for ( $c = 0; $c < $size; $c++ ) {
+			for ( $r = 0; $r <= $size - 11; $r++ ) {
+				$slice = '';
+				for ( $k = 0; $k < 11; $k++ ) {
+					$slice .= $matrix[ $r + $k ][ $c ];
+				}
+				if ( '10111010000' === $slice || '00001011101' === $slice ) {
+					$penalty += 40;
+				}
+			}
+		}
+
+		// 4. Balance of dark and light modules
+		$dark = 0;
+		for ( $r = 0; $r < $size; $r++ ) {
+			for ( $c = 0; $c < $size; $c++ ) {
+				if ( 1 === $matrix[ $r ][ $c ] ) {
+					$dark++;
+				}
+			}
+		}
+		$total = $size * $size;
+		$pct = ( $dark / $total ) * 100;
+		$prev5 = (int)( $pct / 5 ) * 5;
+		$next5 = $prev5 + 5;
+		$step = min( abs( $prev5 - 50 ), abs( $next5 - 50 ) ) / 5;
+		$penalty += (int)$step * 10;
+
+		return $penalty;
+	}
+
+	/**
 	 * Encode string into 2D QR matrix array (0 or 1).
 	 *
 	 * @param string $text
@@ -227,13 +374,13 @@ class SuperShield_QRCode {
 		}
 
 		if ( 0 === $version ) {
-			$version = 10; // Max supported in this lightweight engine
+			$version = 10; // Max supported in this engine
 		}
 
 		$total_data_bytes = 0;
 		$block_list = self::$block_specs[ $version ][ $ec_level ];
 		foreach ( $block_list as $b_group ) {
-			$total_data_bytes += $b_group[0] * ( $b_group[1] - $b_group[2] );
+			$total_data_bytes += $b_group[0] * $b_group[1];
 		}
 
 		// 1. Bit buffer encoding: Mode 8-bit byte (0100)
@@ -277,9 +424,8 @@ class SuperShield_QRCode {
 
 		foreach ( $block_list as $b_group ) {
 			$num_blocks = $b_group[0];
-			$total_words = $b_group[1];
+			$data_words = $b_group[1];
 			$ec_words = $b_group[2];
-			$data_words = $total_words - $ec_words;
 
 			for ( $b = 0; $b < $num_blocks; $b++ ) {
 				$block_data = array_slice( $data_bytes, $byte_offset, $data_words );
@@ -365,7 +511,7 @@ class SuperShield_QRCode {
 		$coords = isset( self::$align_patterns[ $version ] ) ? self::$align_patterns[ $version ] : array();
 		foreach ( $coords as $ar ) {
 			foreach ( $coords as $ac ) {
-				if ( null !== $matrix[ $ar ][ $ac ] ) {
+				if ( $reserved[ $ar ][ $ac ] ) {
 					continue; // Overlaps with finder pattern
 				}
 				for ( $r = -2; $r <= 2; $r++ ) {
@@ -395,11 +541,15 @@ class SuperShield_QRCode {
 		$matrix[ 4 * $version + 9 ][8] = 1;
 		$reserved[ 4 * $version + 9 ][8] = true;
 
-		// Reserve Format Information Areas
+		// Reserve Format Information Areas (ISO 18004 spec-exact)
 		for ( $i = 0; $i <= 8; $i++ ) {
 			$reserved[8][ $i ] = true;
 			$reserved[ $i ][8] = true;
+		}
+		for ( $i = 0; $i < 8; $i++ ) {
 			$reserved[8][ $matrix_size - 1 - $i ] = true;
+		}
+		for ( $i = 0; $i < 7; $i++ ) {
 			$reserved[ $matrix_size - 1 - $i ][8] = true;
 		}
 
@@ -408,80 +558,97 @@ class SuperShield_QRCode {
 		$total_bits_count = count( $final_bits );
 		$dir = -1; // Moving upwards
 		$row = $matrix_size - 1;
-		$col = $matrix_size - 1;
 
-		while ( $col > 0 ) {
-			if ( 6 === $col ) {
-				$col--; // Skip vertical timing line
+		for ( $col = $matrix_size - 1; $col > 0; $col -= 2 ) {
+			$actual_col = $col;
+			if ( $actual_col <= 6 ) {
+				$actual_col--; // Skip vertical timing column 6
 			}
+			$col_range = array( $actual_col, $actual_col - 1 );
 
-			for ( $c_off = 0; $c_off < 2; $c_off++ ) {
-				$curr_col = $col - $c_off;
-				if ( ! $reserved[ $row ][ $curr_col ] ) {
-					$matrix[ $row ][ $curr_col ] = ( $bit_idx < $total_bits_count ) ? $final_bits[ $bit_idx ] : 0;
-					$bit_idx++;
+			while ( true ) {
+				for ( $c_off = 0; $c_off < 2; $c_off++ ) {
+					$curr_col = $col_range[ $c_off ];
+					if ( ! $reserved[ $row ][ $curr_col ] ) {
+						$matrix[ $row ][ $curr_col ] = ( $bit_idx < $total_bits_count ) ? $final_bits[ $bit_idx ] : 0;
+						$bit_idx++;
+					}
 				}
-			}
 
-			$row += $dir;
-			if ( $row < 0 || $row >= $matrix_size ) {
-				$dir = -$dir;
 				$row += $dir;
-				$col -= 2;
+				if ( $row < 0 || $row >= $matrix_size ) {
+					$row -= $dir;
+					$dir = -$dir;
+					break;
+				}
 			}
 		}
 
-		// 6. Apply Best Mask Pattern (Standard Mask 0: (r + c) % 2 == 0 works universally)
-		$mask_id = 0;
-		for ( $r = 0; $r < $matrix_size; $r++ ) {
-			for ( $c = 0; $c < $matrix_size; $c++ ) {
-				if ( ! $reserved[ $r ][ $c ] ) {
-					if ( ( $r + $c ) % 2 === 0 ) {
-						$matrix[ $r ][ $c ] ^= 1;
+		// 6. Evaluate all 8 mask patterns and pick best ISO 18004 mask
+		$best_mask = 0;
+		$min_penalty = PHP_INT_MAX;
+		$best_matrix = null;
+
+		for ( $m_id = 0; $m_id < 8; $m_id++ ) {
+			$trial = $matrix;
+			for ( $r = 0; $r < $matrix_size; $r++ ) {
+				for ( $c = 0; $c < $matrix_size; $c++ ) {
+					if ( ! $reserved[ $r ][ $c ] ) {
+						if ( self::mask_cond( $m_id, $r, $c ) ) {
+							$trial[ $r ][ $c ] ^= 1;
+						}
 					}
 				}
 			}
-		}
 
-		// 7. Write Format Information Bits
-		// 5 format data bits: (ec_level << 3) | mask_id
-		// For EC_L (01) and mask 0 (000): 01000 = 8
-		$format_data = ( $ec_level << 3 ) | $mask_id;
-		$rem = $format_data << 10;
-		for ( $i = 4; $i >= 0; $i-- ) {
-			if ( ( $rem >> ( $i + 10 ) ) & 1 ) {
-				$rem ^= ( 0x537 << $i );
+			// Format bits for this candidate mask
+			$format_data = ( $ec_level << 3 ) | $m_id;
+			$rem = $format_data << 10;
+			for ( $i = 4; $i >= 0; $i-- ) {
+				if ( ( $rem >> ( $i + 10 ) ) & 1 ) {
+					$rem ^= ( 0x537 << $i );
+				}
+			}
+			$format_bits = ( ( $format_data << 10 ) | $rem ) ^ 0x5412;
+
+			// Write ISO/IEC 18004 Format Information Bits
+			for ( $i = 0; $i < 15; $i++ ) {
+				$mod = ( $format_bits >> $i ) & 1;
+
+				// Vertical format info
+				if ( $i < 6 ) {
+					$trial[ $i ][8] = $mod;
+				} elseif ( $i < 8 ) {
+					$trial[ $i + 1 ][8] = $mod;
+				} else {
+					$trial[ $matrix_size - 15 + $i ][8] = $mod;
+				}
+
+				// Horizontal format info
+				if ( $i < 8 ) {
+					$trial[8][ $matrix_size - 1 - $i ] = $mod;
+				} elseif ( $i < 9 ) {
+					$trial[8][ 15 - $i ] = $mod;
+				} else {
+					$trial[8][ 14 - $i ] = $mod;
+				}
+			}
+
+			$score = self::penalty_score( $trial, $matrix_size );
+			if ( $score < $min_penalty ) {
+				$min_penalty = $score;
+				$best_mask = $m_id;
+				$best_matrix = $trial;
 			}
 		}
-		$format_bits = ( ( $format_data << 10 ) | $rem ) ^ 0x5412;
 
-		// Place format bits
-		$fb = array();
-		for ( $i = 0; $i < 15; $i++ ) {
-			$fb[ $i ] = ( $format_bits >> $i ) & 1;
-		}
-
-		// Top-left
-		$matrix[8][0] = $fb[0]; $matrix[8][1] = $fb[1]; $matrix[8][2] = $fb[2]; $matrix[8][3] = $fb[3];
-		$matrix[8][4] = $fb[4]; $matrix[8][5] = $fb[5]; $matrix[8][7] = $fb[6]; $matrix[8][8] = $fb[7];
-		$matrix[7][8] = $fb[8]; $matrix[5][8] = $fb[9]; $matrix[4][8] = $fb[10]; $matrix[3][8] = $fb[11];
-		$matrix[2][8] = $fb[12]; $matrix[1][8] = $fb[13]; $matrix[0][8] = $fb[14];
-
-		// Top-right and bottom-left copies
-		for ( $i = 0; $i < 8; $i++ ) {
-			$matrix[8][ $matrix_size - 1 - $i ] = $fb[ $i ];
-		}
-		for ( $i = 8; $i < 15; $i++ ) {
-			$matrix[ $matrix_size - 15 + $i ][8] = $fb[ $i ];
-		}
-
-		// Return finalized 0/1 matrix
+		// Final normalization to clean integers (0 or 1)
 		for ( $r = 0; $r < $matrix_size; $r++ ) {
 			for ( $c = 0; $c < $matrix_size; $c++ ) {
-				$matrix[ $r ][ $c ] = ( 1 === $matrix[ $r ][ $c ] ) ? 1 : 0;
+				$best_matrix[ $r ][ $c ] = ( 1 === $best_matrix[ $r ][ $c ] ) ? 1 : 0;
 			}
 		}
 
-		return $matrix;
+		return $best_matrix;
 	}
 }

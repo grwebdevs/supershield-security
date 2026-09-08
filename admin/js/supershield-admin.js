@@ -1,24 +1,47 @@
 /**
- * SuperShield Security — Cybersecurity Command Center JS Controller
- * Version 2.1.0 Enterprise Production Suite
- * Author: Ghulam Rasool (grwebdevs.com)
+ * SuperShield Security — Administrative Control Center
+ * Version 2.2.0 Enterprise Production Suite
+ * Author: Ghulam Rasool <grwebdevs.com>
  */
 (function($) {
 	'use strict';
 
 	$(document).ready(function() {
 
+		var alertTimer = null;
 		function showAlert(message, isSuccess) {
 			var $alert = $('#supershield-alert-box');
-			if (!$alert.length) return;
+			if (!$alert.length) {
+				$('body').append('<div id="supershield-alert-box" class="supershield-alert"></div>');
+				$alert = $('#supershield-alert-box');
+			}
+
+			if (alertTimer) {
+				clearTimeout(alertTimer);
+			}
+
+			var iconClass = isSuccess ? 'dashicons-yes-alt' : 'dashicons-warning';
+			var html = '<span class="dashicons ' + iconClass + ' supershield-alert-icon"></span>' +
+				'<div class="supershield-alert-message">' + message + '</div>' +
+				'<button type="button" class="supershield-alert-close" aria-label="Dismiss">&times;</button>';
+
 			$alert.removeClass('success error')
 				.addClass(isSuccess ? 'success' : 'error')
-				.html(message)
-				.slideDown();
-			setTimeout(function() {
-				$alert.slideUp();
+				.html(html)
+				.stop(true, true)
+				.css('display', 'flex')
+				.hide()
+				.fadeIn(200);
+
+			alertTimer = setTimeout(function() {
+				$alert.fadeOut(300);
 			}, 4500);
 		}
+
+		$(document).on('click', '.supershield-alert-close', function() {
+			if (alertTimer) clearTimeout(alertTimer);
+			$('#supershield-alert-box').fadeOut(200);
+		});
 
 		function setButtonLoading($btn, text) {
 			if (!$btn || !$btn.length) return;
@@ -43,38 +66,27 @@
 		});
 
 		// 1. Settings Form AJAX Submission
-		$('.supershield-settings-form').on('submit', function(e) {
+		$(document).on('submit', '.supershield-settings-form', function(e) {
 			e.preventDefault();
 
 			var $form = $(this);
-			var $clickedBtn = $form.data('active-submit-btn') || $(document.activeElement);
-			var $submitButtons = $form.find('button[type="submit"]');
-
-			// Save original HTML on all submit buttons in this form
-			$submitButtons.each(function() {
-				var $b = $(this);
-				if (!$b.data('original-html')) {
-					$b.data('original-html', $b.html());
-				}
-			});
-
-			// If a specific button was clicked, give it a contextual spinner and disable sibling submits
-			if ($clickedBtn && $clickedBtn.length && $clickedBtn.is('button[type="submit"]')) {
-				setButtonLoading($clickedBtn, 'Saving Changes...');
-				$submitButtons.not($clickedBtn).prop('disabled', true);
-			} else {
-				$submitButtons.each(function() {
-					setButtonLoading($(this), 'Saving Changes...');
-				});
+			var $clickedBtn = $form.data('active-submit-btn');
+			if (!$clickedBtn || !$clickedBtn.length || !$clickedBtn.closest($form).length) {
+				$clickedBtn = $form.find('button[type="submit"]').first();
 			}
+
+			// Store and protect original button HTML
+			if (!$clickedBtn.data('original-html')) {
+				$clickedBtn.data('original-html', $clickedBtn.html());
+			}
+
+			setButtonLoading($clickedBtn, 'Saving Changes...');
 
 			var formData = $form.serialize();
 			formData += '&action=supershield_save_settings&nonce=' + encodeURIComponent(supershield_vars.nonce);
 
 			$.post(supershield_vars.ajax_url, formData, function(response) {
-				$submitButtons.each(function() {
-					restoreButton($(this));
-				});
+				restoreButton($clickedBtn);
 				$form.removeData('active-submit-btn');
 
 				if (response.success) {
@@ -83,9 +95,7 @@
 					showAlert(response.data.message || 'Failed to save settings.', false);
 				}
 			}).fail(function() {
-				$submitButtons.each(function() {
-					restoreButton($(this));
-				});
+				restoreButton($clickedBtn);
 				$form.removeData('active-submit-btn');
 				showAlert('Server communication timeout. Please try again.', false);
 			});
@@ -322,8 +332,74 @@
 					$('#2fa-backup-codes-container').html(backupHtml);
 					$('#supershield-2fa-setup-box').slideDown();
 				} else {
-					alert(response.data.message || 'Could not generate 2FA session.');
+					showAlert(response.data.message || 'Could not generate 2FA session.', false);
 				}
+			});
+		});
+
+		// Copy 2FA Secret Key to Clipboard
+		$(document).on('click', '#btn-copy-2fa-secret', function(e) {
+			e.preventDefault();
+			var secret = $('#2fa-secret-text').text().trim();
+			if (!secret) return;
+
+			var $btn = $(this);
+			var copySuccess = function() {
+				$btn.addClass('copied').html('<span class="dashicons dashicons-yes" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> Copied!');
+				showAlert('Secret key copied to clipboard!', true);
+				setTimeout(function() {
+					$btn.removeClass('copied').html('<span class="dashicons dashicons-admin-page" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> Copy Key');
+				}, 2500);
+			};
+
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(secret).then(copySuccess).catch(function() {
+					fallbackCopy(secret, copySuccess);
+				});
+			} else {
+				fallbackCopy(secret, copySuccess);
+			}
+		});
+
+		function fallbackCopy(text, callback) {
+			var $temp = $('<input>');
+			$('body').append($temp);
+			$temp.val(text).select();
+			try {
+				document.execCommand('copy');
+				callback();
+			} catch (err) {
+				showAlert('Could not copy automatically. Please copy manually.', false);
+			}
+			$temp.remove();
+		}
+
+		// Log Out Other User Sessions
+		$(document).on('click', '#btn-destroy-other-sessions', function(e) {
+			e.preventDefault();
+			if (!confirm('Are you sure you want to log out all other active devices and browser sessions for your account?')) {
+				return;
+			}
+
+			var $btn = $(this);
+			setButtonLoading($btn, 'Logging out other sessions...');
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_destroy_sessions',
+				nonce: supershield_vars.nonce
+			}, function(response) {
+				restoreButton($btn);
+				if (response.success) {
+					showAlert(response.data.message || 'All other active sessions destroyed!', true);
+					setTimeout(function() {
+						location.reload();
+					}, 1500);
+				} else {
+					showAlert(response.data.message || 'Failed to destroy other sessions.', false);
+				}
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Server communication timeout. Please try again.', false);
 			});
 		});
 

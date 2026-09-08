@@ -29,6 +29,12 @@ class SuperShield_Login_Security {
 			SuperShield_2FA::init();
 		}
 
+		// Pwned Passwords Breached Database check (HaveIBeenPwned k-Anonymity)
+		if ( SuperShield_Utils::get_option( 'pwned_passwords_check', 0 ) ) {
+			add_filter( 'authenticate', array( __CLASS__, 'check_pwned_password_on_login' ), 25, 3 );
+			add_action( 'check_passwords', array( __CLASS__, 'check_pwned_password_on_reset' ), 10, 3 );
+		}
+
 		if ( ! SuperShield_Utils::get_option( 'bruteforce_protection', 1 ) ) {
 			return;
 		}
@@ -118,6 +124,11 @@ class SuperShield_Login_Security {
 				"User: $username",
 				$client_ip
 			);
+
+			// Dispatch Wordfence-style Lockout Email Alert
+			if ( class_exists( 'SuperShield_Notifier' ) ) {
+				SuperShield_Notifier::notify_brute_lockout( $client_ip, $username );
+			}
 		} else {
 			set_transient( $transient_key, $attempts, $lockout_duration );
 		}
@@ -305,5 +316,123 @@ class SuperShield_Login_Security {
 			}
 		}
 		return $url;
+	}
+
+	/**
+	 * Verify password against HaveIBeenPwned k-Anonymity database on login.
+	 *
+	 * Only evaluates when credentials match a valid WP_User to prevent timing attacks.
+	 *
+	 * @param WP_User|WP_Error|null $user Authenticated user or error.
+	 * @param string                $username Username or email.
+	 * @param string                $password Plaintext password attempted.
+	 * @return WP_User|WP_Error
+	 */
+	public static function check_pwned_password_on_login( $user, $username, $password ) {
+		if ( ( $user instanceof WP_User ) && ! empty( $password ) ) {
+			$pwned_count = self::check_pwned_password( $password );
+			if ( $pwned_count > 0 ) {
+				$client_ip = SuperShield_Utils::get_client_ip();
+				if ( class_exists( 'SuperShield_DB' ) ) {
+					SuperShield_DB::log_event(
+						'AUTH_BREACHED_PASSWORD',
+						"Compromised password detected for user '{$username}'. Appears in " . number_format_i18n( $pwned_count ) . " public breaches.",
+						'',
+						$client_ip
+					);
+				}
+
+				return new WP_Error(
+					'supershield_pwned_password',
+					sprintf(
+						'<strong>SECURITY BREACH DETECTED:</strong> This password was discovered in %s known public data breaches (via HaveIBeenPwned). For your account safety, this password has been rejected. Please reset your password.',
+						number_format_i18n( $pwned_count )
+					)
+				);
+			}
+		}
+
+		return $user;
+	}
+
+	/**
+	 * Verify password against HaveIBeenPwned when a user changes/resets password.
+	 *
+	 * @param stdClass $user User object.
+	 * @param string   $pass1 Plaintext password 1.
+	 * @param string   $pass2 Plaintext password 2.
+	 */
+	public static function check_pwned_password_on_reset( $user, &$pass1, &$pass2 ) {
+		if ( ! empty( $pass1 ) ) {
+			$pwned_count = self::check_pwned_password( $pass1 );
+			if ( $pwned_count > 0 && isset( $user->errors ) && is_object( $user->errors ) ) {
+				$user->errors->add(
+					'supershield_pwned_password',
+					sprintf(
+						'<strong>INSECURE PASSWORD:</strong> This password has appeared in %s public data leaks. Choose a different, unique password.',
+						number_format_i18n( $pwned_count )
+					)
+				);
+			}
+		}
+	}
+
+	/**
+	 * Check if password is compromised using HaveIBeenPwned k-Anonymity API.
+	 *
+	 * Uses SHA-1 prefix (first 5 characters) so the password hash never leaves the server.
+	 *
+	 * @param string $password
+	 * @return int Number of times seen in data breaches (0 if safe or service down).
+	 */
+	public static function check_pwned_password( $password ) {
+		if ( empty( $password ) || ! is_string( $password ) ) {
+			return 0;
+		}
+
+		$hash = strtoupper( sha1( $password ) );
+		$prefix = substr( $hash, 0, 5 );
+		$suffix = substr( $hash, 5 );
+
+		$cache_key = 'ss_pwned_' . md5( $hash );
+		$cached = function_exists( 'get_transient' ) ? get_transient( $cache_key ) : false;
+		if ( false !== $cached ) {
+			return (int) $cached;
+		}
+
+		$url = 'https://api.pwnedpasswords.com/range/' . $prefix;
+		$response = function_exists( 'wp_remote_get' ) ? wp_remote_get( $url, array(
+			'timeout'    => 3,
+			'user-agent' => 'SuperShield-Security-v2.2.0',
+		) ) : null;
+
+		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			return 0; // Fail-open on network issues
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		if ( empty( $body ) ) {
+			return 0;
+		}
+
+		$lines = explode( "\n", $body );
+		$count = 0;
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+			if ( empty( $line ) ) {
+				continue;
+			}
+			$parts = explode( ':', $line );
+			if ( count( $parts ) >= 2 && strtoupper( trim( $parts[0] ) ) === $suffix ) {
+				$count = (int) trim( $parts[1] );
+				break;
+			}
+		}
+
+		if ( function_exists( 'set_transient' ) ) {
+			set_transient( $cache_key, $count, 3600 );
+		}
+
+		return $count;
 	}
 }

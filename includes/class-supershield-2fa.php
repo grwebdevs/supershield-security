@@ -416,11 +416,20 @@ class SuperShield_2FA {
 	 * @param string $issuer
 	 * @return string
 	 */
-	public static function get_otpauth_url( $username, $secret, $issuer = 'SuperShield Security' ) {
-		$site_name = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : 'WordPress';
-		$label = rawurlencode( $issuer . ':' . $username );
-		$issuer_encoded = rawurlencode( $issuer . ' (' . $site_name . ')' );
-		return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_encoded}&algorithm=SHA1&digits=6&period=30";
+	public static function get_otpauth_url( $username, $secret, $issuer = 'SuperShield' ) {
+		$clean_issuer = trim( preg_replace( '/[^a-zA-Z0-9_-]/', '', (string) $issuer ) );
+		if ( empty( $clean_issuer ) ) {
+			$clean_issuer = 'SuperShield';
+		}
+		$clean_user = trim( sanitize_user( (string) $username, true ) );
+		if ( empty( $clean_user ) ) {
+			$clean_user = 'user';
+		}
+		// Standard ISO/KeyUri format: otpauth://totp/Issuer:account?secret=...&issuer=Issuer
+		$label = rawurlencode( $clean_issuer ) . ':' . rawurlencode( $clean_user );
+		$issuer_param = rawurlencode( $clean_issuer );
+
+		return "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer_param}&algorithm=SHA1&digits=6&period=30";
 	}
 
 	/**

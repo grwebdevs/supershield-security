@@ -5,7 +5,7 @@ Tags: security, firewall, malware scanner, waf, brute force, hardening, xmlrpc, 
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,18 @@ SuperShield Security is engineered by **Ghulam Rasool**, Founder & Principal Sec
 SuperShield aims to permanently disrupt the WordPress security ecosystem by providing enterprise-grade defenses without annual paywalls.
 
 == Changelog ==
+
+= 2.2.0 =
+* Fixed Google Authenticator and mobile authenticator QR code scanning: rewrote pure-PHP QR matrix engine with ISO/IEC 18004 8-mask penalty scoring and strict otpauth URI standard compliance.
+* Added 1-Click Copy Secret Key functionality for seamless manual 2FA entry.
+* Fixed admin firewall form button concatenation by isolating access list management into dedicated forms.
+* Added high-visibility floating toast notifications for real-time setting confirmation and AJAX alerts.
+* Added Anti-DDoS Volumetric Rate Limiter with 429 Too Many Requests response headers and customizable cool-down windows.
+* Added HaveIBeenPwned k-Anonymity breach checking to shield logins against compromised passwords.
+* Added Automated Daily Deep Scan with WP-Cron scheduling and immediate administrator email alerts on threat detection.
+* Added Active User Sessions & Devices Manager for real-time session audit and 1-click remote session revocation.
+* Added human-readable country names and flag emojis to authentication audit trail and live traffic logs.
+* Fixed Cloudflare edge proxy IP resolution ensuring authentic client IPs are tracked instead of Cloudflare proxy IPs.
 
 = 2.0.0 =
 * Major release: Upgraded to Enterprise Production Suite.

@@ -51,6 +51,11 @@ class SuperShield_Core {
 			SuperShield_Updater::init();
 		}
 
+		// Initialize email notification engine
+		if ( class_exists( 'SuperShield_Notifier' ) ) {
+			SuperShield_Notifier::init();
+		}
+
 		// Scheduled daily maintenance cron hook
 		add_action( 'supershield_daily_maintenance', array( $this, 'run_daily_maintenance' ) );
 
@@ -79,6 +84,10 @@ class SuperShield_Core {
 	public function init_services() {
 		SuperShield_Hardening::init();
 		SuperShield_Login_Security::init();
+
+		if ( class_exists( 'SuperShield_Scanner' ) ) {
+			SuperShield_Scanner::init();
+		}
 
 		// Deploy persistent MU watchdog
 		if ( class_exists( 'SuperShield_AntiTamper' ) ) {

@@ -16,6 +16,7 @@ global $wpdb;
 $issues_table = SuperShield_DB::get_scan_issues_table();
 $active_issues = $wpdb->get_results( "SELECT * FROM $issues_table WHERE status = 'active' ORDER BY severity DESC, created_at DESC" );
 $last_results = SuperShield_Utils::get_option( 'last_scan_results', array( 'scanned_files' => 0, 'threats_found' => 0, 'duration' => 0 ) );
+$settings = SuperShield_Utils::get_settings();
 
 $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-shield-primary"><span class="dashicons dashicons-search" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Run Full Deep Scan</button>';
 ?>
@@ -113,6 +114,34 @@ $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-
 				</tbody>
 			</table>
 		<?php endif; ?>
+	</div>
+
+	<!-- Automated Daily Scan Scheduling Panel -->
+	<div class="supershield-panel">
+		<div class="supershield-panel-header">
+			<h2>Automated Scan Scheduling &amp; Continuous Defense</h2>
+		</div>
+		<form class="supershield-settings-form" id="supershield-scanner-settings-form">
+			<input type="hidden" name="supershield_section" value="scanner">
+
+			<div class="toggle-switch-row">
+				<div class="toggle-info">
+					<h4>Automated Daily Deep Scan (WP-Cron)</h4>
+					<p>Executes an autonomous full multi-tier malware, core integrity, and database audit once every 24 hours. If threats are detected, an immediate email alert is dispatched to administrators.</p>
+				</div>
+				<label class="switch">
+					<input type="hidden" name="daily_scan_cron_enabled" value="0">
+					<input type="checkbox" name="daily_scan_cron_enabled" value="1" <?php checked( ! empty( $settings['daily_scan_cron_enabled'] ) ); ?>>
+					<span class="slider"></span>
+				</label>
+			</div>
+
+			<div style="margin-top: 20px;">
+				<button type="submit" class="btn-shield-primary">
+					<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Scan Schedule
+				</button>
+			</div>
+		</form>
 	</div>
 
 	<?php SuperShield_Admin::render_footer(); ?>

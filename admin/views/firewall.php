@@ -33,11 +33,12 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 	);
 	?>
 
-	<form class="supershield-settings-form">
-		<input type="hidden" name="supershield_section" value="firewall" />
-		<div class="supershield-main-layout">
-			<!-- Left: WAF Engine Controls & GeoIP -->
-			<div>
+	<div class="supershield-main-layout">
+		<!-- Left: WAF Engine Controls & GeoIP -->
+		<div>
+			<form class="supershield-settings-form" id="supershield-firewall-form">
+				<input type="hidden" name="supershield_section" value="firewall" />
+
 				<!-- WAF Module -->
 				<div class="supershield-panel">
 					<div class="supershield-panel-header">
@@ -64,6 +65,18 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 						<label class="switch">
 							<input type="hidden" name="auto_block_waf_violators" value="0">
 							<input type="checkbox" name="auto_block_waf_violators" value="1" <?php checked( ! empty( $settings['auto_block_waf_violators'] ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Anti-DDoS &amp; Aggressive Rate Limiting</h4>
+							<p>Throttles automated bot floods, rapid-fire scrapers, and volumetric HTTP bursts with instant 429 cooldowns.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="rate_limit_enabled" value="0">
+							<input type="checkbox" name="rate_limit_enabled" value="1" <?php checked( ! empty( $settings['rate_limit_enabled'] ) ); ?>>
 							<span class="slider"></span>
 						</label>
 					</div>
@@ -150,46 +163,49 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 						</button>
 					</div>
 				</div>
+			</form>
 
-				<!-- Blocked IPs Management -->
-				<div class="supershield-panel">
-					<div class="supershield-panel-header">
-						<h2>Currently Blocked IP Addresses (<span id="blocked-ips-count"><?php echo count( $blocked_ips ); ?></span>)</h2>
-					</div>
-
-					<?php if ( empty( $blocked_ips ) ) : ?>
-						<p style="color: var(--sss-text-muted); font-style: italic; padding: 12px 0; margin: 0;">No active IP blocks recorded.</p>
-					<?php else : ?>
-						<table class="supershield-table">
-							<thead>
-								<tr>
-									<th>IP Address</th>
-									<th>Reason</th>
-									<th>Type</th>
-									<th>Blocked At</th>
-									<th>Action</th>
-								</tr>
-							</thead>
-							<tbody>
-								<?php foreach ( $blocked_ips as $b ) : ?>
-									<tr>
-										<td><code><?php echo esc_html( $b->ip_address ); ?></code></td>
-										<td style="font-size:13px;"><?php echo esc_html( $b->reason ); ?></td>
-										<td><span class="badge-tag high"><?php echo esc_html( strtoupper( $b->block_type ) ); ?></span></td>
-										<td style="font-size:12px; color:var(--sss-text-muted);"><?php echo esc_html( $b->blocked_at ); ?></td>
-										<td>
-											<button type="button" class="btn-shield-danger btn-unblock-ip" data-ip="<?php echo esc_attr( $b->ip_address ); ?>">Unblock</button>
-										</td>
-									</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					<?php endif; ?>
+			<!-- Blocked IPs Management -->
+			<div class="supershield-panel">
+				<div class="supershield-panel-header">
+					<h2>Currently Blocked IP Addresses (<span id="blocked-ips-count"><?php echo count( $blocked_ips ); ?></span>)</h2>
 				</div>
-			</div>
 
-			<!-- Right: IP Access Control Lists -->
-			<div>
+				<?php if ( empty( $blocked_ips ) ) : ?>
+					<p style="color: var(--sss-text-muted); font-style: italic; padding: 12px 0; margin: 0;">No active IP blocks recorded.</p>
+				<?php else : ?>
+					<table class="supershield-table">
+						<thead>
+							<tr>
+								<th>IP Address</th>
+								<th>Reason</th>
+								<th>Type</th>
+								<th>Blocked At</th>
+								<th>Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php foreach ( $blocked_ips as $b ) : ?>
+								<tr>
+									<td><code><?php echo esc_html( $b->ip_address ); ?></code></td>
+									<td style="font-size:13px;"><?php echo esc_html( $b->reason ); ?></td>
+									<td><span class="badge-tag high"><?php echo esc_html( strtoupper( $b->block_type ) ); ?></span></td>
+									<td style="font-size:12px; color:var(--sss-text-muted);"><?php echo esc_html( $b->blocked_at ); ?></td>
+									<td>
+										<button type="button" class="btn-shield-danger btn-unblock-ip" data-ip="<?php echo esc_attr( $b->ip_address ); ?>">Unblock</button>
+									</td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				<?php endif; ?>
+			</div>
+		</div>
+
+		<!-- Right: IP Access Control Lists -->
+		<div>
+			<form class="supershield-settings-form" id="supershield-access-lists-form">
+				<input type="hidden" name="supershield_section" value="access_lists" />
 				<div class="supershield-panel">
 					<div class="supershield-panel-header">
 						<h2>IP Access Control Lists</h2>
@@ -225,9 +241,9 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 						</button>
 					</div>
 				</div>
-			</div>
+			</form>
 		</div>
-	</form>
+	</div>
 
 	<?php SuperShield_Admin::render_footer(); ?>
 </div>

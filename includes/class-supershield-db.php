@@ -144,6 +144,21 @@ class SuperShield_DB {
 	public static function block_ip( $ip, $reason, $block_type = 'waf', $duration_seconds = 86400 ) {
 		global $wpdb;
 
+		$ip = trim( (string) $ip );
+		if ( empty( $ip ) ) {
+			return false;
+		}
+
+		// Never block loopback, local IPs, or Cloudflare edge nodes
+		if ( '127.0.0.1' === $ip || '::1' === $ip || SuperShield_Utils::is_cloudflare_ip( $ip ) ) {
+			return false;
+		}
+
+		// Never block whitelisted IPs
+		if ( class_exists( 'SuperShield_IP_Manager' ) && SuperShield_IP_Manager::is_whitelisted( $ip ) ) {
+			return false;
+		}
+
 		$table = self::get_blocked_ips_table();
 		$expires_at = ( $duration_seconds > 0 ) ? date( 'Y-m-d H:i:s', time() + $duration_seconds ) : null;
 

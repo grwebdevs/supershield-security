@@ -69,6 +69,18 @@ $login_events = $wpdb->get_results(
 						</label>
 					</div>
 
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Pwned Passwords Shield (k-Anonymity)</h4>
+							<p>Blocks leaked passwords by checking HaveIBeenPwned via 5-character SHA-1 hash prefix (100% zero-knowledge, never sends plain password).</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="pwned_passwords_check" value="0">
+							<input type="checkbox" name="pwned_passwords_check" value="1" <?php checked( ! empty( $settings['pwned_passwords_check'] ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
 					<div style="margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 						<div>
 							<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:13px;">Max Retries Before Lockout:</label>
@@ -142,6 +154,10 @@ $login_events = $wpdb->get_results(
 						</thead>
 						<tbody>
 							<?php foreach ( $login_events as $ev ) : ?>
+								<?php
+								$country_code = SuperShield_GeoIP::resolve_country( $ev->ip_address );
+								$country_name = SuperShield_GeoIP::get_country_name( $country_code );
+								?>
 								<tr>
 									<td>
 										<?php if ( 'login_success' === $ev->event_type ) : ?>
@@ -152,7 +168,13 @@ $login_events = $wpdb->get_results(
 											<span class="badge-tag high">Failed</span>
 										<?php endif; ?>
 									</td>
-									<td><code><?php echo esc_html( $ev->ip_address ); ?></code></td>
+									<td>
+										<div style="font-weight:600; font-family:monospace;"><?php echo esc_html( $ev->ip_address ); ?></div>
+										<div style="font-size:11px; color:var(--sss-text-muted); display:flex; align-items:center; gap:4px; margin-top:2px;">
+											<span class="dashicons dashicons-admin-site" style="font-size:12px; width:12px; height:12px;"></span>
+											<span><?php echo esc_html( $country_name . ( 'XX' !== $country_code && 'LOCAL' !== $country_code ? ' (' . $country_code . ')' : '' ) ); ?></span>
+										</div>
+									</td>
 									<td style="font-size:13px;"><?php echo esc_html( $ev->details ); ?></td>
 									<td style="font-size:13px;"><?php echo esc_html( $ev->payload ); ?></td>
 									<td style="font-size:12px; color:var(--sss-text-muted); white-space:nowrap;"><?php echo esc_html( human_time_diff( strtotime( $ev->created_at ), current_time( 'timestamp' ) ) . ' ago' ); ?></td>
@@ -202,7 +224,12 @@ $login_events = $wpdb->get_results(
 					<div id="2fa-qr-container" style="text-align:center; padding:12px 0; background:#ffffff; border-radius:6px; border:1px solid var(--sss-border); margin-bottom:12px;"></div>
 
 					<div style="font-size:12px; color:var(--sss-text-secondary); margin-bottom:6px;">Or enter this secret key manually:</div>
-					<code id="2fa-secret-text" style="display:block; padding:10px; background:#ffffff; border:1px solid var(--sss-border); border-radius:6px; font-size:13px; color:var(--sss-brand); letter-spacing:2px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; word-break:break-all; margin-bottom:16px;"></code>
+					<div class="copy-key-wrapper">
+						<code id="2fa-secret-text"></code>
+						<button type="button" id="btn-copy-2fa-secret" class="btn-copy-key" title="Copy Secret Key to Clipboard">
+							<span class="dashicons dashicons-admin-page" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> Copy Key
+						</button>
+					</div>
 
 					<h3 style="margin:0 0 10px 0; color:var(--sss-text-primary); font-size:14px;">2. Emergency Recovery Codes</h3>
 					<p style="font-size:12px; color:var(--sss-danger); margin:0 0 8px 0; font-weight:500;">Save these single-use codes safely. If you lose your phone, they are your recovery key:</p>
@@ -214,6 +241,49 @@ $login_events = $wpdb->get_results(
 						<button type="button" id="btn-confirm-2fa" class="btn-shield-primary" style="flex:1; justify-content:center;">Verify & Activate</button>
 					</div>
 				</div>
+			</div>
+
+			<!-- Active User Sessions Manager -->
+			<div class="supershield-panel" style="margin-top:24px;">
+				<div class="supershield-panel-header">
+					<h2>Active User Sessions &amp; Devices</h2>
+				</div>
+				<p style="font-size:13px; color:var(--sss-text-secondary); margin-top:0;">
+					Review and revoke authorized browser sessions across all devices for your administrator account.
+				</p>
+
+				<?php
+				$all_sessions = class_exists( 'WP_Session_Tokens' ) ? WP_Session_Tokens::get_instance( get_current_user_id() )->get_all() : array();
+				?>
+
+				<div style="margin-bottom:16px;">
+					<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:#f8fafc; border:1px solid var(--sss-border); border-radius:8px;">
+						<div>
+							<div style="font-weight:600; font-size:13px; color:var(--sss-text-primary); display:flex; align-items:center; gap:6px;">
+								<span class="dashicons dashicons-desktop" style="color:var(--sss-brand);"></span> Current Active Session
+								<span class="badge-tag safe" style="font-size:10px; padding:1px 6px;">This Device</span>
+							</div>
+							<div style="font-size:11.5px; color:var(--sss-text-muted); margin-top:3px;">
+								IP: <code><?php echo esc_html( SuperShield_Utils::get_client_ip() ); ?></code> &bull; Last Activity: Just now
+							</div>
+						</div>
+						<span class="dashicons dashicons-yes-alt" style="color:var(--sss-success); font-size:20px; width:20px; height:20px;"></span>
+					</div>
+				</div>
+
+				<?php if ( count( $all_sessions ) > 1 ) : ?>
+					<p style="font-size:12px; color:var(--sss-danger); margin:0 0 10px 0; font-weight:500;">
+						Notice: There are <strong><?php echo count( $all_sessions ) - 1; ?></strong> other active device session(s) logged into this account.
+					</p>
+				<?php else : ?>
+					<p style="font-size:12px; color:var(--sss-text-muted); margin:0 0 10px 0;">
+						No other devices currently logged into this account.
+					</p>
+				<?php endif; ?>
+
+				<button type="button" id="btn-destroy-other-sessions" class="btn-shield-danger" style="width:100%; justify-content:center;">
+					<span class="dashicons dashicons-external" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> Log Out All Other Devices
+				</button>
 			</div>
 		</div>
 	</div>
