@@ -31,6 +31,8 @@ class SuperShield_Admin {
 		add_action( 'wp_ajax_supershield_unblock_ip', array( $this, 'ajax_unblock_ip' ) );
 		add_action( 'wp_ajax_supershield_clear_logs', array( $this, 'ajax_clear_logs' ) );
 
+		add_action( 'admin_notices', array( $this, 'render_admin_security_notices' ) );
+
 		// 2.0.0 Feature Endpoints
 		add_action( 'wp_ajax_supershield_export_diagnostics', array( $this, 'ajax_export_diagnostics' ) );
 		add_action( 'wp_ajax_supershield_submit_feedback', array( $this, 'ajax_submit_feedback' ) );
@@ -40,6 +42,11 @@ class SuperShield_Admin {
 		add_action( 'wp_ajax_supershield_disable_2fa', array( $this, 'ajax_disable_2fa' ) );
 		add_action( 'wp_ajax_supershield_destroy_sessions', array( $this, 'ajax_destroy_sessions' ) );
 		add_action( 'wp_ajax_supershield_send_test_email', array( $this, 'ajax_send_test_email' ) );
+
+		// 2.5.0 Feature Endpoints
+		add_action( 'wp_ajax_supershield_test_discord', array( $this, 'ajax_test_discord' ) );
+		add_action( 'wp_ajax_supershield_bulk_action', array( $this, 'ajax_bulk_action' ) );
+		add_action( 'wp_ajax_supershield_fetch_live_traffic', array( $this, 'ajax_fetch_live_traffic' ) );
 	}
 
 	/**
@@ -863,5 +870,244 @@ class SuperShield_Admin {
 				'stage'   => $stage,
 			) );
 		}
+	}
+
+	/**
+	 * Display high-priority cybersecurity alert banner on WordPress Admin screens.
+	 */
+	public function render_admin_security_notices() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		// Don't show inside SuperShield's own plugin screens where full console is already displayed
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( $screen && false !== strpos( $screen->id, 'supershield' ) ) {
+			return;
+		}
+
+		$metrics = SuperShield_DB::get_dashboard_metrics();
+
+		// Alert 1: Unresolved malware or CVE vulnerabilities
+		if ( ! empty( $metrics['active_threats'] ) && $metrics['active_threats'] > 0 ) {
+			$scanner_url = admin_url( 'admin.php?page=supershield-scanner' );
+			?>
+			<div class="notice notice-error is-dismissible" style="border-left: 4px solid #ef4444; background: #fff5f5; padding: 12px 18px; margin: 16px 20px 10px 0;">
+				<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+					<div style="display: flex; align-items: center; gap: 10px;">
+						<span class="dashicons dashicons-shield-alt" style="color: #ef4444; font-size: 22px; width: 22px; height: 22px;"></span>
+						<span style="font-size: 13.5px; color: #0f172a;">
+							<strong>SuperShield Security Warning:</strong> Detected <strong><?php echo (int) $metrics['active_threats']; ?> unresolved security threat(s)</strong> requiring immediate attention.
+						</span>
+					</div>
+					<a href="<?php echo esc_url( $scanner_url ); ?>" class="button button-primary" style="background: #ef4444; border-color: #dc2626; font-weight: 600;">
+						Review &amp; Eradicate Threats &rarr;
+					</a>
+				</div>
+			</div>
+			<?php
+			return;
+		}
+
+		// Alert 2: Informative lockout notice if attacks occurred today
+		if ( ! empty( $metrics['failed_logins_today'] ) && $metrics['failed_logins_today'] >= 5 ) {
+			$firewall_url = admin_url( 'admin.php?page=supershield-firewall' );
+			?>
+			<div class="notice notice-warning is-dismissible" style="border-left: 4px solid #f59e0b; background: #fffbeb; padding: 10px 16px; margin: 16px 20px 10px 0;">
+				<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+					<div style="display: flex; align-items: center; gap: 8px;">
+						<span class="dashicons dashicons-shield" style="color: #f59e0b; font-size: 18px; width: 18px; height: 18px;"></span>
+						<span style="font-size: 13px; color: #1e293b;">
+							<strong>SuperShield Firewall Active:</strong> Neutralized <strong><?php echo (int) $metrics['failed_logins_today']; ?> brute-force probe(s)</strong> today. Your site is actively shielded.
+						</span>
+					</div>
+					<a href="<?php echo esc_url( $firewall_url ); ?>" style="color: #4f46e5; text-decoration: underline; font-weight: 600; font-size: 12.5px;">
+						View Blocked Attacks &rarr;
+					</a>
+				</div>
+			</div>
+			<?php
+		}
+	}
+
+	/**
+	 * AJAX: Test Discord Webhook connection.
+	 */
+	public function ajax_test_discord() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$webhook_url = isset( $_POST['webhook_url'] ) ? esc_url_raw( wp_unslash( $_POST['webhook_url'] ) ) : '';
+		if ( empty( $webhook_url ) || false === strpos( $webhook_url, 'discord.com/api/webhooks' ) ) {
+			wp_send_json_error( array( 'message' => 'Please provide a valid Discord Webhook URL (https://discord.com/api/webhooks/...)' ) );
+		}
+
+		// Save URL temporarily or permanently
+		SuperShield_Utils::update_option( 'discord_webhook_url', $webhook_url );
+
+		$details = array(
+			'Origin Site'     => get_bloginfo( 'name' ),
+			'Site URL'        => home_url(),
+			'Test Dispatched' => current_time( 'Y-m-d H:i:s T' ),
+			'Status'          => 'Verified Active & Online',
+		);
+
+		$sent = SuperShield_Notifier::dispatch_discord_webhook(
+			'weekly_digest',
+			'Discord Webhook Test Verification',
+			'SuperShield Security webhook notification dispatched successfully! Your security alerts will be transmitted directly into this channel.',
+			$details,
+			admin_url( 'admin.php?page=supershield-security' )
+		);
+
+		if ( $sent ) {
+			wp_send_json_success( array( 'message' => 'Discord Webhook test notification transmitted successfully! Check your Discord channel.' ) );
+		} else {
+			wp_send_json_error( array( 'message' => 'Failed to reach Discord. Please verify that the webhook URL is active and copied correctly.' ) );
+		}
+	}
+
+	/**
+	 * AJAX: Bulk action on scanner findings (Bulk Disinfect, Bulk Quarantine, Bulk Clean).
+	 */
+	public function ajax_bulk_action() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$bulk_action = isset( $_POST['bulk_action'] ) ? sanitize_key( $_POST['bulk_action'] ) : '';
+		$issue_ids = isset( $_POST['issue_ids'] ) && is_array( $_POST['issue_ids'] ) ? array_map( 'intval', $_POST['issue_ids'] ) : array();
+
+		if ( empty( $issue_ids ) ) {
+			wp_send_json_error( array( 'message' => 'No scan issues selected for bulk remediation.' ) );
+		}
+
+		$cleaned_count = 0;
+		$errors = array();
+
+		foreach ( $issue_ids as $id ) {
+			if ( 'disinfect' === $bulk_action || 'clean' === $bulk_action ) {
+				$res = SuperShield_Cleaner::clean_issue( $id );
+				if ( ! empty( $res['success'] ) ) {
+					$cleaned_count++;
+				} else {
+					$errors[] = "#$id: " . ( $res['message'] ?? 'Failed' );
+				}
+			} elseif ( 'ignore' === $bulk_action ) {
+				SuperShield_Cleaner::mark_issue_resolved( $id, 'ignored' );
+				$cleaned_count++;
+			}
+		}
+
+		wp_send_json_success( array(
+			'message'       => "Bulk action [{$bulk_action}] processed {$cleaned_count} finding(s) successfully.",
+			'cleaned_count' => $cleaned_count,
+			'errors'        => $errors,
+		) );
+	}
+
+	/**
+	 * AJAX: Fetch live traffic events with search, filter, and pagination.
+	 */
+	public function ajax_fetch_live_traffic() {
+		check_ajax_referer( 'supershield_admin_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		global $wpdb;
+		$events_table = SuperShield_DB::get_events_table();
+
+		$search = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$filter = isset( $_POST['filter_type'] ) ? sanitize_text_field( wp_unslash( $_POST['filter_type'] ) ) : '';
+		$page = isset( $_POST['page_num'] ) ? max( 1, (int) $_POST['page_num'] ) : 1;
+		$limit = 50;
+		$offset = ( $page - 1 ) * $limit;
+
+		$where_clauses = array( '1=1' );
+		$params = array();
+
+		if ( ! empty( $search ) ) {
+			$where_clauses[] = '(ip_address LIKE %s OR request_uri LIKE %s OR payload LIKE %s OR details LIKE %s)';
+			$like = '%' . $wpdb->esc_like( $search ) . '%';
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+		}
+
+		if ( 'threats' === $filter ) {
+			$where_clauses[] = "event_type IN ('waf_block', 'geoip_block', 'tamper_alert', 'rate_limit_drop')";
+		} elseif ( 'logins' === $filter ) {
+			$where_clauses[] = "event_type IN ('login_success', 'login_fail', 'login_lockout')";
+		} elseif ( 'admin' === $filter ) {
+			$where_clauses[] = "event_type = 'admin_action'";
+		} elseif ( ! empty( $filter ) ) {
+			$where_clauses[] = 'event_type = %s';
+			$params[] = $filter;
+		}
+
+		$where_sql = implode( ' AND ', $where_clauses );
+
+		$count_query = "SELECT COUNT(*) FROM $events_table WHERE $where_sql";
+		$total_rows = ! empty( $params ) ? (int) $wpdb->get_var( $wpdb->prepare( $count_query, $params ) ) : (int) $wpdb->get_var( $count_query );
+
+		$query = "SELECT * FROM $events_table WHERE $where_sql ORDER BY created_at DESC LIMIT %d OFFSET %d";
+		$query_params = array_merge( $params, array( $limit, $offset ) );
+		$events = $wpdb->get_results( $wpdb->prepare( $query, $query_params ) );
+
+		$html = '';
+		if ( empty( $events ) ) {
+			$html = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--sss-text-muted); font-style:italic;">No log records matching your criteria.</td></tr>';
+		} else {
+			foreach ( $events as $row ) {
+				$country_code = SuperShield_GeoIP::resolve_country( $row->ip_address );
+				$country_name = SuperShield_GeoIP::get_country_name( $country_code );
+
+				$badge_class = 'info';
+				$badge_label = esc_html( $row->event_type );
+
+				if ( in_array( $row->event_type, array( 'waf_block', 'rate_limit_drop', 'login_lockout', 'tamper_alert' ), true ) ) {
+					$badge_class = 'critical';
+					$badge_label = 'rate_limit_drop' === $row->event_type ? 'Rate Limit' : strtoupper( str_replace( '_', ' ', $row->event_type ) );
+				} elseif ( 'geoip_block' === $row->event_type ) {
+					$badge_class = 'medium';
+					$badge_label = 'GeoIP Block';
+				} elseif ( 'login_fail' === $row->event_type ) {
+					$badge_class = 'high';
+					$badge_label = 'Auth Fail';
+				} elseif ( 'login_success' === $row->event_type ) {
+					$badge_class = 'safe';
+					$badge_label = 'Success';
+				}
+
+				$html .= '<tr>';
+				$html .= '<td><span class="badge-tag ' . esc_attr( $badge_class ) . '">' . $badge_label . '</span></td>';
+				$html .= '<td>';
+				$html .= '<div style="font-weight:600; font-family:monospace;">' . esc_html( $row->ip_address ) . '</div>';
+				$html .= '<div style="font-size:11px; color:var(--sss-text-muted); display:flex; align-items:center; gap:4px; margin-top:2px;">';
+				$html .= '<span class="dashicons dashicons-admin-site" style="font-size:12px; width:12px; height:12px;"></span>';
+				$html .= '<span>' . esc_html( $country_name . ( 'XX' !== $country_code && 'LOCAL' !== $country_code ? ' (' . $country_code . ')' : '' ) ) . '</span>';
+				$html .= '</div></td>';
+				$html .= '<td><span style="display:inline-block; padding:2px 5px; font-size:10px; font-weight:700; border-radius:3px; background:#f1f5f9; color:#475569; margin-right:4px;">' . esc_html( $row->request_method ) . '</span><code style="font-size:12px;">' . esc_html( substr( $row->request_uri, 0, 45 ) . ( strlen( $row->request_uri ) > 45 ? '...' : '' ) ) . '</code></td>';
+				$html .= '<td><span style="font-size:12.5px; color:var(--sss-text-primary);">' . esc_html( $row->details ) . '</span></td>';
+				$html .= '<td>' . ( ! empty( $row->payload ) ? '<code style="font-size:11.5px; background:#f8fafc; padding:3px 6px; border:1px solid #e2e8f0; border-radius:4px; max-width:200px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' . esc_html( substr( $row->payload, 0, 50 ) ) . '</code>' : '<span style="color:var(--sss-text-muted); font-size:11px;">N/A</span>' ) . '</td>';
+				$html .= '<td style="font-size:12px; color:var(--sss-text-muted); white-space:nowrap;">' . esc_html( $row->created_at ) . '</td>';
+				$html .= '</tr>';
+			}
+		}
+
+		wp_send_json_success( array(
+			'html'       => $html,
+			'total_rows' => $total_rows,
+			'page'       => $page,
+			'total_pages'=> ceil( $total_rows / $limit ),
+		) );
 	}
 }

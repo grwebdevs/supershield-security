@@ -101,9 +101,12 @@ class SuperShield_Scanner {
 
 			case 'database':
 				self::scan_database_threats( $state );
+				if ( class_exists( 'SuperShield_Vuln_Scanner' ) ) {
+					SuperShield_Vuln_Scanner::scan_installed_components( $state );
+				}
 				$response['next_stage']  = 'finalize';
 				$response['progress']    = 96;
-				$response['message']     = 'Database security audit complete. Synchronizing threat records and finalizing report...';
+				$response['message']     = 'Database audit & CVE vulnerability intelligence check complete. Finalizing report...';
 				break;
 
 			case 'finalize':
@@ -622,16 +625,25 @@ class SuperShield_Scanner {
 				       OR u.user_login LIKE 'administrator\\_%' ESCAPE '\\\\'
 				       OR u.user_login LIKE 'wp\\_%' ESCAPE '\\\\'
 				       OR u.user_login REGEXP '^[a-f0-9]{8,16}$'
+				       OR u.user_login LIKE '%ghost%'
+				       OR u.user_login LIKE '%backup_admin%'
+				       OR u.user_login LIKE '%temp_admin%'
+				       OR u.user_email LIKE '%@tempmail.%'
+				       OR u.user_email LIKE '%@10minutemail.%'
+				       OR u.user_email LIKE '%@yopmail.%'
+				       OR u.user_email LIKE '%@mailinator.%'
 				   )",
 				$caps_key,
 				'%administrator%'
 			)
 		);
 
+		$current_user_id = function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
+
 		if ( ! empty( $users ) ) {
 			foreach ( $users as $u ) {
-				// Safeguard: never flag standard root/admin accounts as rogue
-				if ( in_array( strtolower( $u->user_login ), array( 'admin', 'administrator', 'root' ), true ) ) {
+				// Safeguard: never flag standard root/admin accounts or active logged-in user as rogue
+				if ( (int) $u->ID === $current_user_id || in_array( strtolower( $u->user_login ), array( 'admin', 'administrator', 'root' ), true ) ) {
 					continue;
 				}
 				$results['threats_found']++;

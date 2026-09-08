@@ -55,7 +55,8 @@ class SuperShield_DB {
 			PRIMARY KEY  (id),
 			KEY ip_address (ip_address),
 			KEY event_type (event_type),
-			KEY created_at (created_at)
+			KEY created_at (created_at),
+			KEY idx_type_created (event_type, created_at)
 		) $charset_collate;
 
 		CREATE TABLE $blocked_ips_table (
@@ -73,6 +74,7 @@ class SuperShield_DB {
 
 		CREATE TABLE $scan_issues_table (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			file_hash varchar(32) DEFAULT '' NOT NULL,
 			file_path text NOT NULL,
 			issue_type varchar(50) NOT NULL,
 			severity varchar(20) DEFAULT 'high' NOT NULL,
@@ -82,6 +84,8 @@ class SuperShield_DB {
 			created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
 			PRIMARY KEY  (id),
+			KEY file_hash (file_hash),
+			KEY idx_file_hash_status (file_hash, status),
 			KEY issue_type (issue_type),
 			KEY severity (severity),
 			KEY status (status)
@@ -89,7 +93,14 @@ class SuperShield_DB {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
-		update_option( 'supershield_db_version', defined( 'SUPERSHIELD_VERSION' ) ? SUPERSHIELD_VERSION : '2.0.0' );
+
+		// Migrate existing scan issues to populate file_hash if empty
+		$has_empty_hashes = $wpdb->get_var( "SELECT COUNT(*) FROM $scan_issues_table WHERE file_hash = '' OR file_hash IS NULL" );
+		if ( $has_empty_hashes > 0 ) {
+			$wpdb->query( "UPDATE $scan_issues_table SET file_hash = MD5(file_path) WHERE file_hash = '' OR file_hash IS NULL" );
+		}
+
+		update_option( 'supershield_db_version', defined( 'SUPERSHIELD_VERSION' ) ? SUPERSHIELD_VERSION : '2.5.0' );
 	}
 
 	/**
@@ -283,11 +294,13 @@ class SuperShield_DB {
 		global $wpdb;
 		$table = self::get_scan_issues_table();
 
-		// Check if active issue exists for this file
+		$file_hash = md5( $file_path );
+
+		// Check if active issue exists for this file via indexed file_hash
 		$existing = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT id FROM $table WHERE file_path = %s AND status = 'active'",
-				$file_path
+				"SELECT id FROM $table WHERE file_hash = %s AND status = 'active' LIMIT 1",
+				$file_hash
 			)
 		);
 
@@ -295,6 +308,7 @@ class SuperShield_DB {
 			$wpdb->update(
 				$table,
 				array(
+					'file_path'      => sanitize_text_field( $file_path ),
 					'issue_type'     => sanitize_text_field( $issue_type ),
 					'severity'       => sanitize_text_field( $severity ),
 					'details'        => sanitize_text_field( $details ),
@@ -302,7 +316,7 @@ class SuperShield_DB {
 					'updated_at'     => current_time( 'mysql' ),
 				),
 				array( 'id' => $existing ),
-				array( '%s', '%s', '%s', '%s', '%s' ),
+				array( '%s', '%s', '%s', '%s', '%s', '%s' ),
 				array( '%d' )
 			);
 			$id = (int) $existing;
@@ -313,6 +327,7 @@ class SuperShield_DB {
 		$inserted = $wpdb->insert(
 			$table,
 			array(
+				'file_hash'      => $file_hash,
 				'file_path'      => sanitize_text_field( $file_path ),
 				'issue_type'     => sanitize_text_field( $issue_type ),
 				'severity'       => sanitize_text_field( $severity ),
@@ -322,7 +337,7 @@ class SuperShield_DB {
 				'created_at'     => current_time( 'mysql' ),
 				'updated_at'     => current_time( 'mysql' ),
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( $inserted ) {

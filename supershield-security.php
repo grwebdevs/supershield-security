@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define Plugin Version & Constants
-define( 'SUPERSHIELD_VERSION', '2.4.0' );
+define( 'SUPERSHIELD_VERSION', '2.5.0' );
 define( 'SUPERSHIELD_PLUGIN_FILE', __FILE__ );
 define( 'SUPERSHIELD_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SUPERSHIELD_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -37,11 +37,13 @@ require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-ip-manager.php
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-geoip.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-waf.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-cleaner.php';
+require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-vuln-scanner.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-scanner.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-hardening.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-login-security.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-qrcode.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-2fa.php';
+require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-woocommerce.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-updater.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-antitamper.php';
 require_once SUPERSHIELD_PLUGIN_DIR . 'includes/class-supershield-telemetry.php';

@@ -189,9 +189,36 @@ $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn
 						</label>
 					</div>
 
+					<!-- Weekly Executive Security Digest -->
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>Weekly Executive Security Digest</h4>
+							<p>Sends an automated weekly summary of attacks blocked, blacklist counts, and system health status.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="enable_weekly_digest" value="0">
+							<input type="checkbox" name="enable_weekly_digest" value="1" <?php checked( ! empty( SuperShield_Utils::get_option( 'enable_weekly_digest', 1 ) ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
+					<!-- Discord Webhook Integration -->
+					<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--sss-border);">
+						<label style="display:block; font-size:13px; font-weight:600; color:var(--sss-text-primary); margin-bottom:6px;">
+							Discord Webhook URL (100% Free Live Channel Alerts):
+						</label>
+						<div style="display:flex; gap:8px;">
+							<input type="text" name="discord_webhook_url" id="discord_webhook_url" class="regular-text" style="flex:1; border:1px solid var(--sss-border); border-radius:6px; padding:8px 12px; font-size:13px;" value="<?php echo esc_attr( SuperShield_Utils::get_option( 'discord_webhook_url', '' ) ); ?>" placeholder="https://discord.com/api/webhooks/...">
+							<button type="button" id="btn-test-discord-webhook" class="btn-shield-secondary" style="white-space:nowrap; font-size:12px;">Test Discord</button>
+						</div>
+						<p style="font-size:11px; color:var(--sss-text-secondary); margin:4px 0 0 0;">
+							Create a free Webhook in your Discord channel (Edit Channel &rarr; Integrations &rarr; Webhooks) and paste the URL here.
+						</p>
+					</div>
+
 					<div style="margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
 						<button type="submit" class="btn-shield-primary">
-							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Email Alert Settings
+							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Alert Settings
 						</button>
 						<button type="button" id="btn-send-test-alert" class="btn-shield-secondary">
 							<span class="dashicons dashicons-email-alt" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Send Test Alert Email

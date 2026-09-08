@@ -132,7 +132,109 @@ class SuperShield_Notifier {
 			SuperShield_DB::log_event( 'admin_action', "Security email alert dispatched: {$event_type} to " . count( $recipients ) . " recipient(s)." );
 		}
 
+		// Dispatch 100% Free Discord Webhook if configured
+		self::dispatch_discord_webhook( $event_type, $subject, $summary, $details, $action_url );
+
 		return $sent;
+	}
+
+	/**
+	 * Dispatch alert notification to configured Discord Webhook.
+	 * 100% Free, zero third-party packages or paid API keys.
+	 *
+	 * @param string $event_type
+	 * @param string $subject
+	 * @param string $summary
+	 * @param array  $details
+	 * @param string $action_url
+	 * @return bool
+	 */
+	public static function dispatch_discord_webhook( $event_type, $subject, $summary, $details = array(), $action_url = '' ) {
+		$webhook_url = trim( (string) SuperShield_Utils::get_option( 'discord_webhook_url', '' ) );
+		if ( empty( $webhook_url ) || ! filter_var( $webhook_url, FILTER_VALIDATE_URL ) ) {
+			return false;
+		}
+
+		$color = 15671108; // Red #ef4444
+		if ( 'admin_login' === $event_type ) {
+			$color = 6514417; // Indigo #6366f1
+		} elseif ( 'weekly_digest' === $event_type ) {
+			$color = 1096065; // Emerald #10b981
+		}
+
+		$fields = array();
+		if ( is_array( $details ) ) {
+			foreach ( $details as $k => $v ) {
+				$fields[] = array(
+					'name'   => (string) $k,
+					'value'  => (string) $v,
+					'inline' => true,
+				);
+			}
+		}
+
+		$payload = array(
+			'username'   => 'SuperShield Security',
+			'avatar_url' => 'https://raw.githubusercontent.com/grwebdevs/supershield-security/main/assets/icon-128x128.png',
+			'embeds'     => array(
+				array(
+					'title'       => '[SuperShield Alert] ' . $subject,
+					'description' => $summary . ( ! empty( $action_url ) ? "\n\n[Open Security Command Center](" . esc_url( $action_url ) . ')' : '' ),
+					'color'       => $color,
+					'fields'      => $fields,
+					'footer'      => array(
+						'text' => 'SuperShield Security v' . SUPERSHIELD_VERSION . ' • ' . get_bloginfo( 'name' ),
+					),
+					'timestamp'   => gmdate( 'c' ),
+				),
+			),
+		);
+
+		$resp = wp_remote_post(
+			$webhook_url,
+			array(
+				'headers' => array( 'Content-Type' => 'application/json' ),
+				'body'    => wp_json_encode( $payload ),
+				'timeout' => 5,
+			)
+		);
+
+		return ! is_wp_error( $resp ) && in_array( wp_remote_retrieve_response_code( $resp ), array( 200, 204 ), true );
+	}
+
+	/**
+	 * Send weekly executive security digest email to administrators.
+	 */
+	public static function send_weekly_digest() {
+		if ( ! SuperShield_Utils::get_option( 'enable_weekly_digest', 1 ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$metrics = SuperShield_DB::get_dashboard_metrics();
+
+		$events_table = SuperShield_DB::get_events_table();
+		$weekly_blocks = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $events_table WHERE created_at >= %s",
+				date( 'Y-m-d H:i:s', strtotime( '-7 days' ) )
+			)
+		);
+
+		$details = array(
+			'Threats Blocked (7 Days)' => number_format_i18n( $weekly_blocks ),
+			'Active IP Blacklist'     => number_format_i18n( $metrics['active_blocked_ips'] ),
+			'Unresolved Malware'      => number_format_i18n( $metrics['active_threats'] ),
+			'Firewall Health Score'   => ( $metrics['active_threats'] > 0 ? '82/100 (Action Needed)' : '98/100 (Optimal Fortress)' ),
+		);
+
+		self::dispatch_alert(
+			'weekly_digest',
+			'Weekly Executive Security Digest',
+			'Your weekly summary of defensive actions and security health status for ' . get_bloginfo( 'name' ) . '.',
+			$details,
+			admin_url( 'admin.php?page=supershield-security' )
+		);
 	}
 
 	/**

@@ -211,13 +211,21 @@ class SuperShield_Cleaner {
 
 		// 5. Injected Code in Themes or Plugins -> Surgical Disinfection
 		if ( file_exists( $target ) && is_file( $target ) ) {
-			$stripped = self::surgical_strip( $target, $issue->signature_name );
+			$stripped = self::surgical_strip( $target, isset( $issue->signature_name ) ? $issue->signature_name : '' );
 			if ( $stripped['success'] ) {
 				self::mark_issue_resolved( $issue->id, 'cleaned' );
 				return array( 'success' => true, 'message' => 'Malicious code surgically excised; legitimate code preserved.' );
 			}
 
-			// Fallback to quarantine if surgical strip fails
+			// Protected File Guard: Never quarantine essential theme or plugin entrypoints!
+			if ( self::is_protected_critical_file( $target ) ) {
+				return array(
+					'success' => false,
+					'message' => 'Protected System File: ' . basename( $target ) . ' is an essential core/theme/plugin file. Quarantining was prevented to avoid breaking your website. Please inspect the code or restore from a clean backup.',
+				);
+			}
+
+			// Safe Fallback to quarantine for non-critical files
 			$quarantined = self::quarantine_file( $target );
 			if ( $quarantined ) {
 				self::mark_issue_resolved( $issue->id, 'quarantined' );
@@ -728,5 +736,56 @@ class SuperShield_Cleaner {
 		);
 
 		return true;
+	}
+
+	/**
+	 * Determine if a file is a critical system, theme, or plugin entrypoint that must NEVER be quarantined.
+	 *
+	 * @param string $path File path.
+	 * @return bool
+	 */
+	public static function is_protected_critical_file( $path ) {
+		if ( empty( $path ) || ! is_string( $path ) ) {
+			return false;
+		}
+
+		$normalized = function_exists( 'wp_normalize_path' ) ? wp_normalize_path( $path ) : str_replace( '\\', '/', $path );
+		$basename = strtolower( basename( $normalized ) );
+
+		// Critical WordPress core files
+		$critical_core = array(
+			'wp-config.php', 'index.php', 'wp-settings.php', 'wp-load.php',
+			'wp-blog-header.php', 'wp-login.php', 'functions.php', 'header.php', 'footer.php',
+		);
+		if ( in_array( $basename, $critical_core, true ) ) {
+			return true;
+		}
+
+		// Active stylesheet / template directory files
+		if ( function_exists( 'get_stylesheet_directory' ) && function_exists( 'get_template_directory' ) ) {
+			$theme_dir = function_exists( 'wp_normalize_path' ) ? wp_normalize_path( get_stylesheet_directory() ) : str_replace( '\\', '/', get_stylesheet_directory() );
+			$parent_theme_dir = function_exists( 'wp_normalize_path' ) ? wp_normalize_path( get_template_directory() ) : str_replace( '\\', '/', get_template_directory() );
+
+			if ( 0 === strpos( $normalized, $theme_dir . '/' ) || 0 === strpos( $normalized, $parent_theme_dir . '/' ) ) {
+				if ( in_array( $basename, array( 'functions.php', 'index.php', 'style.css' ), true ) ) {
+					return true;
+				}
+			}
+		}
+
+		// Main plugin root loaders (e.g., wp-content/plugins/plugin-name/plugin-name.php)
+		if ( defined( 'WP_PLUGIN_DIR' ) ) {
+			$plugins_dir = function_exists( 'wp_normalize_path' ) ? wp_normalize_path( WP_PLUGIN_DIR ) : str_replace( '\\', '/', WP_PLUGIN_DIR );
+			if ( 0 === strpos( $normalized, $plugins_dir . '/' ) ) {
+				$rel = substr( $normalized, strlen( $plugins_dir ) + 1 );
+				$parts = explode( '/', $rel );
+				// If directly in plugin root, e.g. "plugin-slug/plugin-slug.php"
+				if ( 2 === count( $parts ) && 'php' === strtolower( pathinfo( $basename, PATHINFO_EXTENSION ) ) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 }

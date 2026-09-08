@@ -102,25 +102,51 @@ $login_events = $wpdb->get_results(
 						</div>
 					</div>
 
-					<!-- Global 2FA Policy Settings -->
+					<!-- Cloudflare Turnstile Bot Defense -->
 					<div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--sss-border);">
 						<div class="toggle-switch-row">
 							<div class="toggle-info">
-								<h4>Enforce Two-Factor Authentication (2FA) Globally</h4>
-								<p>Mandates TOTP security codes for privileged user roles across the site.</p>
+								<h4>Cloudflare Turnstile Bot Defense (100% Free)</h4>
+								<p>Protects login, registration, and password-reset forms with Cloudflare Turnstile. Privacy-friendly, GDPR-compliant, and zero annoying image puzzles.</p>
 							</div>
 							<label class="switch">
-								<input type="hidden" name="2fa_enabled" value="0">
-								<input type="checkbox" name="2fa_enabled" value="1" <?php checked( ! empty( $settings['2fa_enabled'] ) ); ?>>
+								<input type="hidden" name="turnstile_enabled" value="0">
+								<input type="checkbox" name="turnstile_enabled" value="1" <?php checked( ! empty( $settings['turnstile_enabled'] ) ); ?>>
 								<span class="slider"></span>
 							</label>
 						</div>
 
-						<div style="margin-top:16px; display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+						<div style="margin-top:14px; display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
 							<div>
-								<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:13px;">Grace Period Days for New Users:</label>
-								<input type="number" name="2fa_grace_period_days" min="0" max="30" value="<?php echo esc_attr( isset( $settings['2fa_grace_period_days'] ) ? $settings['2fa_grace_period_days'] : 3 ); ?>" class="regular-text" style="width:100%;">
-								<p style="font-size:11px; color:var(--sss-text-muted); margin:4px 0 0 0;">Days before lockout occurs if user hasn't set up 2FA.</p>
+								<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:12.5px;">Turnstile Site Key:</label>
+								<input type="text" name="turnstile_site_key" value="<?php echo esc_attr( isset( $settings['turnstile_site_key'] ) ? $settings['turnstile_site_key'] : '' ); ?>" class="regular-text" placeholder="0x4AAAAAA..." style="width:100%; font-family:monospace; font-size:12px;">
+							</div>
+							<div>
+								<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:12.5px;">Turnstile Secret Key:</label>
+								<input type="password" name="turnstile_secret_key" value="<?php echo esc_attr( isset( $settings['turnstile_secret_key'] ) ? $settings['turnstile_secret_key'] : '' ); ?>" class="regular-text" placeholder="0x4AAAAAA..." style="width:100%; font-family:monospace; font-size:12px;">
+							</div>
+						</div>
+					</div>
+
+					<!-- WooCommerce Anti-Carding & Checkout Shield -->
+					<div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--sss-border);">
+						<div class="toggle-switch-row">
+							<div class="toggle-info">
+								<h4>WooCommerce Anti-Carding &amp; Fake Order Shield</h4>
+								<p>Stops automated card-testing bots from submitting micro-transactions on your checkout, preventing payment gateway fines and chargebacks.</p>
+							</div>
+							<label class="switch">
+								<input type="hidden" name="wc_anti_carding_enabled" value="0">
+								<input type="checkbox" name="wc_anti_carding_enabled" value="1" <?php checked( ! empty( $settings['wc_anti_carding_enabled'] ) || ! isset( $settings['wc_anti_carding_enabled'] ) ); ?>>
+								<span class="slider"></span>
+							</label>
+						</div>
+
+						<div style="margin-top:14px; display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+							<div>
+								<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:12.5px;">Max Failed Transactions in 10 Min:</label>
+								<input type="number" name="wc_max_failed_checkouts" min="1" max="20" value="<?php echo esc_attr( isset( $settings['wc_max_failed_checkouts'] ) ? $settings['wc_max_failed_checkouts'] : 3 ); ?>" class="regular-text" style="width:100%;">
+								<p style="font-size:11px; color:var(--sss-text-muted); margin:4px 0 0 0;">Exceeding this threshold bans the bot IP for 24 hours.</p>
 							</div>
 						</div>
 					</div>

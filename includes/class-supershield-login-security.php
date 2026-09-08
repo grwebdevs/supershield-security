@@ -60,6 +60,15 @@ class SuperShield_Login_Security {
 			add_action( 'login_form', array( __CLASS__, 'render_honeypot_field' ) );
 			add_filter( 'authenticate', array( __CLASS__, 'verify_honeypot' ), 10, 3 );
 		}
+
+		// Cloudflare Turnstile Bot Defense
+		if ( SuperShield_Utils::get_option( 'turnstile_enabled', 0 ) ) {
+			add_action( 'login_enqueue_scripts', array( __CLASS__, 'enqueue_turnstile_scripts' ) );
+			add_action( 'login_form', array( __CLASS__, 'render_turnstile_widget' ) );
+			add_action( 'register_form', array( __CLASS__, 'render_turnstile_widget' ) );
+			add_action( 'lostpassword_form', array( __CLASS__, 'render_turnstile_widget' ) );
+			add_filter( 'authenticate', array( __CLASS__, 'verify_turnstile' ), 21, 3 );
+		}
 	}
 
 	/**
@@ -232,6 +241,98 @@ class SuperShield_Login_Security {
 
 			return new WP_Error( 'supershield_bot_detected', 'Automated bot activity detected.' );
 		}
+		return $user;
+	}
+
+	/**
+	 * Enqueue Cloudflare Turnstile script on login screens.
+	 */
+	public static function enqueue_turnstile_scripts() {
+		wp_enqueue_script(
+			'cloudflare-turnstile',
+			'https://challenges.cloudflare.com/turnstile/v0/api.js',
+			array(),
+			null,
+			true
+		);
+	}
+
+	/**
+	 * Render Cloudflare Turnstile CAPTCHA widget on login/register/lostpassword forms.
+	 */
+	public static function render_turnstile_widget() {
+		$site_key = trim( (string) SuperShield_Utils::get_option( 'turnstile_site_key', '' ) );
+		if ( empty( $site_key ) ) {
+			return;
+		}
+
+		$theme = SuperShield_Utils::get_option( 'turnstile_theme', 'auto' );
+		echo '<div class="cf-turnstile" data-sitekey="' . esc_attr( $site_key ) . '" data-theme="' . esc_attr( $theme ) . '" style="margin: 14px 0;"></div>';
+	}
+
+	/**
+	 * Verify Cloudflare Turnstile response with Cloudflare siteverify endpoint.
+	 *
+	 * @param WP_User|WP_Error|null $user
+	 * @param string                $username
+	 * @param string                $password
+	 * @return WP_User|WP_Error|null
+	 */
+	public static function verify_turnstile( $user, $username, $password ) {
+		// Don't verify if already an error or whitelisted
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+
+		$site_key = trim( (string) SuperShield_Utils::get_option( 'turnstile_site_key', '' ) );
+		$secret_key = trim( (string) SuperShield_Utils::get_option( 'turnstile_secret_key', '' ) );
+
+		if ( empty( $site_key ) || empty( $secret_key ) ) {
+			return $user;
+		}
+
+		$token = isset( $_POST['cf-turnstile-response'] ) ? sanitize_text_field( wp_unslash( $_POST['cf-turnstile-response'] ) ) : '';
+		if ( empty( $token ) ) {
+			return new WP_Error(
+				'turnstile_required',
+				'<strong>SECURITY VERIFICATION REQUIRED:</strong> Please complete the Cloudflare Turnstile challenge.'
+			);
+		}
+
+		$client_ip = SuperShield_Utils::get_client_ip();
+		$response = wp_remote_post(
+			'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+			array(
+				'body'    => array(
+					'secret'   => $secret_key,
+					'response' => $token,
+					'remoteip' => $client_ip,
+				),
+				'timeout' => 8,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			// Fail open on transient network timeout to prevent locking legitimate admins
+			return $user;
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		$data = json_decode( $body, true );
+
+		if ( empty( $data['success'] ) ) {
+			SuperShield_DB::log_event(
+				'waf_block',
+				'Cloudflare Turnstile Verification Failed: Bot or invalid token',
+				"User: $username",
+				$client_ip
+			);
+			return new WP_Error(
+				'turnstile_failed',
+				'<strong>VERIFICATION FAILED:</strong> Cloudflare Turnstile bot verification failed. Please try again.'
+			);
+		}
+
 		return $user;
 	}
 

@@ -16,7 +16,7 @@ define( 'ABSPATH', str_replace( '\\', '/', __DIR__ . '/../' ) );
 define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content/' );
 define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . 'plugins/' );
 define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . 'mu-plugins/' );
-define( 'SUPERSHIELD_VERSION', '2.4.0' );
+define( 'SUPERSHIELD_VERSION', '2.5.0' );
 define( 'SUPERSHIELD_PLUGIN_DIR', ABSPATH );
 define( 'SUPERSHIELD_BASENAME', 'supershield-security/supershield-security.php' );
 define( 'AUTH_KEY', 'test_auth_key_1234567890abcdef' );
@@ -975,17 +975,17 @@ $decrypted_rule = SuperShield_AntiTamper::decrypt_vault( $encrypted_vault );
 assert_test( $decrypted_rule === $sample_rule, 'AES-256-GCM vault cleanly decrypted back to original plaintext rule in-memory' );
 
 // --- 12. GitHub Releases Auto-Updater ---
-echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.4.0) ---\n";
-assert_test( version_compare( '2.5.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
-assert_test( ! version_compare( '2.3.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
+echo "\n--- 12. Testing GitHub Releases Auto-Updater (2.5.0) ---\n";
+assert_test( version_compare( '2.6.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison correctly recognizes higher GitHub release' );
+assert_test( ! version_compare( '2.4.0', SUPERSHIELD_VERSION, '>' ), 'Semver comparison rejects older versions' );
 
 $fake_transient = (object) array( 'response' => array() );
 // Populate mock cache
 set_transient( 'supershield_latest_release_cache', array(
-	'version'      => '2.5.0',
-	'tag_name'     => 'v2.5.0',
-	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.5.0/supershield-security.zip',
-	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.5.0',
+	'version'      => '2.6.0',
+	'tag_name'     => 'v2.6.0',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.6.0/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.6.0',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );
@@ -1128,7 +1128,7 @@ if ( class_exists( 'SuperShield_Cleaner' ) ) {
 echo "\n========================================================\n";
 echo " Results: $pass_count of $test_count tests passed.\n";
 if ( $pass_count === $test_count ) {
-	echo " ALL 2.4.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
+	echo " ALL 2.5.0 ENTERPRISE SUITE TESTS PASSED SUCCESSFULLY! \n";
 } else {
 	echo " SOME TESTS FAILED!\n";
 }

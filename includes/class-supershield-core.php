@@ -87,6 +87,13 @@ class SuperShield_Core {
 	public function init_services() {
 		SuperShield_Hardening::init();
 
+		// 404 Vulnerability Prober Trap
+		add_action( 'template_redirect', array( 'SuperShield_WAF', 'track_404_probes' ) );
+
+		if ( class_exists( 'SuperShield_WooCommerce' ) ) {
+			SuperShield_WooCommerce::init();
+		}
+
 		if ( class_exists( 'SuperShield_Scanner' ) ) {
 			SuperShield_Scanner::init();
 		}

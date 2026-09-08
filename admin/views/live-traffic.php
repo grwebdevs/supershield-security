@@ -57,13 +57,21 @@ $clear_btn_html = '<button type="button" id="btn-clear-supershield-logs" class="
 	</div>
 
 	<div class="supershield-panel">
-		<div class="supershield-panel-header">
-			<h2>Event Trail (Latest 100 Records)</h2>
-			<div>
-				<form method="get" style="display:inline-flex; gap:8px;">
+		<div class="supershield-panel-header" style="flex-wrap:wrap; gap:12px;">
+			<div style="display:flex; align-items:center; gap:16px;">
+				<h2 style="margin:0;">Live Security Telemetry</h2>
+				<label style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--sss-text-secondary); cursor:pointer; user-select:none; background:#f8fafc; padding:4px 10px; border-radius:6px; border:1px solid #e2e8f0;">
+					<input type="checkbox" id="traffic-auto-refresh-toggle" style="margin:0;" />
+					<span style="font-weight:600;">Live Stream (10s)</span>
+					<span id="traffic-pulse-indicator" style="display:none; width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e;"></span>
+				</label>
+			</div>
+			<div style="display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap;">
+				<input type="text" id="traffic-search-input" placeholder="Search IP, endpoint, payload..." style="font-size:13px; background:#ffffff; color:var(--sss-text-primary); border:1px solid #cbd5e1; border-radius:6px; padding:6px 12px; width:220px;" />
+				<form method="get" style="display:inline-flex; gap:8px; margin:0;">
 					<input type="hidden" name="page" value="supershield-logs" />
-					<select name="filter_type" onchange="this.form.submit()" style="font-size:13px; background:#ffffff; color:var(--sss-text-primary); border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px;">
-						<option value="">Specific Filter...</option>
+					<select id="traffic-filter-select" name="filter_type" style="font-size:13px; background:#ffffff; color:var(--sss-text-primary); border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px;">
+						<option value="">All Threat Types</option>
 						<option value="waf_block" <?php selected( $filter_type, 'waf_block' ); ?>>WAF Block</option>
 						<option value="geoip_block" <?php selected( $filter_type, 'geoip_block' ); ?>>GeoIP Block</option>
 						<option value="rate_limit_drop" <?php selected( $filter_type, 'rate_limit_drop' ); ?>>Rate Limit Drop</option>
@@ -77,21 +85,21 @@ $clear_btn_html = '<button type="button" id="btn-clear-supershield-logs" class="
 			</div>
 		</div>
 
-		<?php if ( empty( $events ) ) : ?>
-			<p style="color: var(--sss-text-muted); font-style: italic; padding: 30px 0; text-align: center; margin:0;">No log records matching your filter criteria.</p>
-		<?php else : ?>
-			<table class="supershield-table">
-				<thead>
-					<tr>
-						<th>Event Classification</th>
-						<th>Client IP &amp; Geolocation</th>
-						<th>Method &amp; Targeted Endpoint</th>
-						<th>Incident Details</th>
-						<th>Offending Payload Snippet</th>
-						<th>Timestamp</th>
-					</tr>
-				</thead>
-				<tbody>
+		<table class="supershield-table">
+			<thead>
+				<tr>
+					<th>Event Classification</th>
+					<th>Client IP &amp; Geolocation</th>
+					<th>Method &amp; Targeted Endpoint</th>
+					<th>Incident Details</th>
+					<th>Offending Payload Snippet</th>
+					<th>Timestamp</th>
+				</tr>
+			</thead>
+			<tbody id="traffic-tbody">
+				<?php if ( empty( $events ) ) : ?>
+					<tr><td colspan="6" style="color: var(--sss-text-muted); font-style: italic; padding: 30px 0; text-align: center; margin:0;">No log records matching your filter criteria.</td></tr>
+				<?php else : ?>
 					<?php foreach ( $events as $row ) : ?>
 						<?php
 						$country_code = SuperShield_GeoIP::resolve_country( $row->ip_address );
@@ -135,9 +143,18 @@ $clear_btn_html = '<button type="button" id="btn-clear-supershield-logs" class="
 							<td style="font-size:12px; color:var(--sss-text-muted); white-space:nowrap;"><?php echo esc_html( $row->created_at ); ?></td>
 						</tr>
 					<?php endforeach; ?>
-				</tbody>
-			</table>
-		<?php endif; ?>
+				<?php endif; ?>
+			</tbody>
+		</table>
+
+		<div id="traffic-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid #f1f5f9;">
+			<div id="traffic-count-info" style="font-size:12.5px; color:var(--sss-text-muted);">Displaying latest 100 live stream records</div>
+			<div style="display:flex; align-items:center; gap:8px;">
+				<button type="button" id="btn-traffic-prev" class="button button-secondary button-small" disabled>&larr; Previous</button>
+				<span id="traffic-page-indicator" style="font-size:12px; font-weight:600; color:var(--sss-text-secondary); padding:0 4px;">Page 1</span>
+				<button type="button" id="btn-traffic-next" class="button button-secondary button-small">&rarr; Next</button>
+			</div>
+		</div>
 	</div>
 
 	<?php SuperShield_Admin::render_footer(); ?>

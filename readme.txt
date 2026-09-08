@@ -5,24 +5,27 @@ Tags: security, firewall, malware scanner, waf, brute force, hardening, xmlrpc, 
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.4.0
+Stable tag: 2.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-All-in-one enterprise WordPress cybersecurity fortress combining the intelligent WAF of Wordfence, the surgical 1-click disinfection of MalCare, and the 8-layer zero-trust hardening of AIOS — 100% free.
+All-in-one enterprise WordPress cybersecurity fortress combining the intelligent real-time WAF of Wordfence, the surgical 1-click disinfection of MalCare, and zero database bloat — 100% free with no paywalled protections.
 
 == Description ==
 
-**SuperShield Security (SSS)** is an enterprise-grade defense-in-depth WordPress security suite engineered by **Ghulam Rasool** (Founder & Principal Security Engineer at `grwebdevs.com`). It permanently disrupts the legacy WordPress cybersecurity ecosystem by delivering capabilities that competitors charge $99–$299/year for **100% free**:
+**SuperShield Security (SSS)** is an enterprise-grade defense-in-depth WordPress security suite engineered by **Ghulam Rasool** (Founder & Principal Security Engineer at `grwebdevs.com`). It permanently disrupts legacy plugins like Wordfence, MalCare, and iThemes by delivering capabilities they charge $119–$299/year for **100% free**:
 
-* **Real-Time Web Application Firewall (WAF):** Zero-delay heuristic request normalization, AST pattern matching, and deep inspection neutralizing SQLi, XSS, RCE, LFI, and vulnerability probers (`sqlmap`, `nikto`, `wpscan`).
-* **Deep Forensic Scanner & 1-Click Surgical Disinfection (MalCare Killer):** Compares core files against official WordPress.org checksums, calculates Shannon entropy to detect packed obfuscated shells, detects hidden dot droppers (`.xxxx.php`), and excises malicious code while preserving legitimate plugins and themes.
-* **Enterprise Two-Factor Authentication (2FA):** Standard RFC 6238 TOTP (Google Authenticator, Authy, 1Password, Bitwarden) with offline SVG QR code generation, role-based enforcement, grace periods, and 8 single-use emergency backup recovery passcodes.
-* **100% Free Country / GeoIP Access Blocking:** High-speed offline IP-to-country resolution using embedded GeoLite2 ranges and Cloudflare `CF-IPCountry` header passthrough.
-* **8-Layer Zero-Trust Server Hardening:** Uploads PHP execution denial, XML-RPC killswitch, anti-user enumeration, runtime `DISALLOW_FILE_EDIT`, enterprise HTTP security headers, and stealth dropper shields across Apache, LiteSpeed, and Nginx.
-* **GitHub Releases API Auto-Updater:** Seamless background update distribution directly from Ghulam Rasool's GitHub releases with pre-update snapshot rollbacks.
-* **Cryptographic Self-Integrity & MU Watchdog:** HMAC-SHA256 manifest checks detecting unauthorized code modifications, AES-256-GCM encrypted rule vaults, and persistent Must-Use watchdog defense.
-* **Zero MySQL Drag:** Memory-capped audit logging, automated 30-day log rotation, and microsecond in-memory IP caching.
+### ⚡ Why Website Owners & Agencies Switch from Wordfence to SuperShield:
+* **Zero Database Bloat (No `wfhits` Sludge):** Wordfence floods your MySQL database with gigabytes of unindexed hit tables (`wfhits`), causing severe query slowdowns. SuperShield features memory-capped audit telemetry, MD5 lookup indices, and zero database degradation.
+* **100% Free Real-Time WAF:** Wordfence delays new firewall threat signatures by 30 days for free users. SuperShield provides zero-delay, real-time protection to all users for free.
+* **1-Click Surgical Disinfection (Never Brick Your Site):** When Wordfence detects malware, its only option is to delete the infected file — which often bricks your site with PHP fatal errors. SuperShield's Safe Cleaner surgically excises malicious payload patterns while preserving legitimate code, backed by an immutable Protected File Guard.
+* **100% Free Country Blocking:** Wordfence locks country blocking behind a $149/yr paywall. SuperShield provides high-speed offline GeoIP blocking with Cloudflare header integration completely free.
+* **Cloudflare Turnstile Bot Defense:** Goodbye frustrating Google reCAPTCHA image puzzles. SuperShield protects login and registration screens with seamless, privacy-respecting Cloudflare Turnstile.
+* **WooCommerce Anti-Carding Shield:** Stops automated credit card testing bots dead in their tracks using invisible honeypots and velocity lockouts (3 failed checkouts in 10 mins = 24-hour lockout).
+* **Instant Free Discord Webhooks & Admin Alerts:** Get instant incident alerts directly to your Discord channel with zero setup cost, plus high-visibility threat alert banners on your WordPress admin dashboard upon login.
+* **Vulnerability Intelligence (CVE Scanner):** Automated vulnerability tracking for WordPress Core and top plugins (WooCommerce, Elementor, LiteSpeed Cache, CF7, etc.) with actionable remediation advice.
+* **WAF Learning Mode & Simulation Mode:** Train your firewall to understand your custom themes and plugins without false positives.
+* **404 Prober Trap:** Automatically detects and bans automated probers scanning for vulnerable paths and backdoor scripts.
 
 ---
 
@@ -89,6 +92,19 @@ SuperShield Security is engineered by **Ghulam Rasool**, Founder & Principal Sec
 SuperShield aims to permanently disrupt the WordPress security ecosystem by providing enterprise-grade defenses without annual paywalls.
 
 == Changelog ==
+
+= 2.5.0 =
+* Added Vulnerability Intelligence & CVE Scanner (`SuperShield_Vuln_Scanner`): Real-time vulnerability matching for WordPress Core, WooCommerce, Elementor, LiteSpeed Cache, CF7, and WPForms.
+* Added WAF Learning Mode & Simulation Mode: Allows testing rules in 'simulate' mode and learning benign patterns to eliminate false positives in dynamic environments.
+* Added 404 Vulnerability Prober Trap: Neutralizes automated bot scanning tools hitting non-existent paths (>20 404s/minute triggers a 2-hour IP ban).
+* Added Cloudflare Turnstile Bot Defense: Built-in Turnstile verification for WordPress login and registration, replacing annoying CAPTCHAs.
+* Added WooCommerce Anti-Carding Shield: Prevents card stuffing attacks on WooCommerce checkout endpoints with invisible honeypots and rapid failure rate limits.
+* Added 100% Free Discord Webhook Dispatcher: Rich instant alerts sent directly to Discord channels with embed cards for critical blocks, malware discoveries, and lockouts.
+* Added Login Security Dashboard Alert Banners: Unresolved active malware threats and brute-force stops are highlighted immediately to administrators upon logging into WordPress.
+* Added Scanner Bulk Disinfection & Ignored Actions: Select and remediate or ignore multiple threat findings in a single click.
+* Added Live Traffic Real-Time Streaming & AJAX Pagination: Filter, search, and live auto-stream security events every 10 seconds without page reloads.
+* Hardened Core Database Queries & Indexes: Added `file_hash` MD5 composite indexing on scan issues table and event indices to eliminate database performance drag.
+* Added Protected File Guard: Critical core files, theme stylesheets, and plugin roots are safeguarded from deletion to prevent site crashes during malware remediation.
 
 = 2.4.0 =
 * Fixed scan timeout & PHP memory limits: Implemented chunked multi-stage scanning engine (`run_scan_stage`) allowing sequential AJAX execution of core diffs, uploads, droppers, signatures, and database scans with granular live percentage feedback (15% -> 35% -> 55% -> 75% -> 90% -> 100%).

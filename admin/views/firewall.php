@@ -57,6 +57,32 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 						</label>
 					</div>
 
+					<div class="toggle-switch-row" style="align-items: center;">
+						<div class="toggle-info">
+							<h4>Firewall Operational Mode</h4>
+							<p>Choose between active enforcement, 7-day learning mode (auto-whitelists legitimate builder/admin actions), or silent monitoring.</p>
+						</div>
+						<div style="min-width: 220px;">
+							<select name="waf_mode" style="width: 100%; border-radius: 6px; padding: 6px 10px; font-size: 13px; background: #ffffff; color: var(--sss-text-primary); border: 1px solid #cbd5e1;">
+								<option value="block" <?php selected( isset( $settings['waf_mode'] ) ? $settings['waf_mode'] : 'block', 'block' ); ?>>🛡️ Active Blocking (Drop Threats)</option>
+								<option value="learning" <?php selected( isset( $settings['waf_mode'] ) ? $settings['waf_mode'] : 'block', 'learning' ); ?>>🧠 Learning Mode (Auto-Whitelist)</option>
+								<option value="simulate" <?php selected( isset( $settings['waf_mode'] ) ? $settings['waf_mode'] : 'block', 'simulate' ); ?>>👁️ Simulation (Monitor &amp; Log Only)</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="toggle-switch-row">
+						<div class="toggle-info">
+							<h4>404 Vulnerability Prober Trap</h4>
+							<p>Instantly locks out automated scanners (WPScan, Acunetix, Nikto) generating excessive 404 errors probing for sensitive files.</p>
+						</div>
+						<label class="switch">
+							<input type="hidden" name="prober_404_trap_enabled" value="0">
+							<input type="checkbox" name="prober_404_trap_enabled" value="1" <?php checked( ! empty( $settings['prober_404_trap_enabled'] ) || ! isset( $settings['prober_404_trap_enabled'] ) ); ?>>
+							<span class="slider"></span>
+						</label>
+					</div>
+
 					<div class="toggle-switch-row">
 						<div class="toggle-info">
 							<h4>Auto-Block Violators</h4>

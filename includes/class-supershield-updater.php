@@ -211,6 +211,7 @@ class SuperShield_Updater {
 			if ( ! is_dir( $backup_dir ) ) {
 				wp_mkdir_p( $backup_dir );
 			}
+			self::secure_backup_dir( $backup_dir );
 			// Snapshot current version
 			$snapshot_path = trailingslashit( $backup_dir ) . 'supershield-v' . SUPERSHIELD_VERSION . '-' . time() . '.zip';
 			if ( class_exists( 'ZipArchive' ) && defined( 'SUPERSHIELD_PLUGIN_DIR' ) ) {
@@ -254,5 +255,23 @@ class SuperShield_Updater {
 			SuperShield_DB::log_event( 'admin_action', 'SuperShield updated successfully via GitHub Release Engine.' );
 		}
 		return $response;
+	}
+
+	/**
+	 * Deploy Apache 2.2 / 2.4 immunity lockdown in backup directory.
+	 *
+	 * @param string $dir
+	 */
+	private static function secure_backup_dir( $dir ) {
+		$htaccess_content = "# SuperShield Updater Backup Immunity\n" .
+			"<IfModule !mod_authz_core.c>\n" .
+			"    Order Deny,Allow\n" .
+			"    Deny from all\n" .
+			"</IfModule>\n" .
+			"<IfModule mod_authz_core.c>\n" .
+			"    Require all denied\n" .
+			"</IfModule>\n";
+		@file_put_contents( $dir . '/.htaccess', $htaccess_content );
+		@file_put_contents( $dir . '/index.php', '<?php exit; ?>' );
 	}
 }

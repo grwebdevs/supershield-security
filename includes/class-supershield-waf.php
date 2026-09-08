@@ -54,19 +54,17 @@ class SuperShield_WAF {
 			if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() && function_exists( 'current_user_can' ) && current_user_can( 'manage_options' ) ) {
 				return;
 			}
-			// If before pluggable.php is loaded, check if logged_in cookie exists and validate
-			if ( ! function_exists( 'is_user_logged_in' ) && ! empty( $_COOKIE ) ) {
-				$has_auth_cookie = false;
+			// If before pluggable.php, check if auth cookie is present and validate once available
+			if ( ! empty( $_COOKIE ) ) {
 				foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
 					if ( 0 === strpos( $cookie_name, 'wordpress_logged_in_' ) ) {
-						$has_auth_cookie = true;
+						if ( function_exists( 'wp_validate_auth_cookie' ) ) {
+							$user_id = wp_validate_auth_cookie( $_COOKIE[ $cookie_name ], 'logged_in' );
+							if ( $user_id && user_can( $user_id, 'manage_options' ) ) {
+								return;
+							}
+						}
 						break;
-					}
-				}
-				if ( $has_auth_cookie && defined( 'ABSPATH' ) && defined( 'WPINC' ) && file_exists( ABSPATH . WPINC . '/pluggable.php' ) ) {
-					require_once ABSPATH . WPINC . '/pluggable.php';
-					if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() && function_exists( 'current_user_can' ) && current_user_can( 'manage_options' ) ) {
-						return;
 					}
 				}
 			}
@@ -353,12 +351,14 @@ class SuperShield_WAF {
 		// 1. SQL Injection (SQLi) Signatures
 		$sqli_patterns = array(
 			'/(\bunion\b[\s\/\*]+(all[\s\/\*]+)?\bselect\b)/i',
-			'/(\bselect\b[\s\/\*]+.*?[\s\/\*]+\bfrom\b[\s\/\*]+(information_schema|wp_users|sys\.)\b)/i',
+			'/(\bselect\b[\s\/\*]+[a-zA-Z0-9_,\.\*\(\)\s\'"\-]{1,80}[\s\/\*]+\bfrom\b[\s\/\*]+(information_schema|wp_users|sys\.)\b)/i',
 			'/(\b(benchmark|sleep)[\s\/\*]*\([\s\/\*]*\d+[\s\/\*]*\))/i',
 			'/(\b(load_file|into[\s\/\*]+(out|dump)file)\b)/i',
 			'/((?:\'|\"|(?:\b\d+\b))[\s\/\*]+(or|and)[\s\/\*]+(?:\'|\"|(?:\b\d+\b))[\s\/\*]*=[\s\/\*]*(?:\'|\"|(?:\b\d+\b)))/i',
 			'/(\bor\b[\s\/\*]+1\s*=\s*1\b)/i',
 			'/(\bwaitfor[\s\/\*]+\bdelay\b[\s\/\*]+[\'"]\d+)/i',
+			'/(\b(drop|truncate|alter)\s+(table|database)\s+[a-zA-Z0-9_]+)/i',
+			'/\/\*!\d{5}\s*(select|union|insert|update|delete|drop)/i',
 		);
 
 		foreach ( $inspect_targets as $target ) {
@@ -453,6 +453,32 @@ class SuperShield_WAF {
 	 * @param string $ip
 	 */
 	private static function record_violation_and_block( $threat_type, $details, $payload, $ip ) {
+		$waf_mode = SuperShield_Utils::get_option( 'waf_mode', 'block' ); // 'block', 'simulate', 'learning'
+
+		// 1. Learning Mode: If enabled and request originates from authenticated or trusted session
+		if ( 'learning' === $waf_mode ) {
+			if ( ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) || ! empty( $_COOKIE ) ) {
+				self::learn_benign_rule( $threat_type, $details, $payload );
+				SuperShield_DB::log_event( 'waf_learned', "Learning Mode Auto-Whitelisted: $threat_type ($details)", $payload, $ip );
+				return;
+			}
+		}
+
+		// 2. Check if rule pattern was previously learned/whitelisted
+		if ( self::is_rule_learned( $threat_type, $payload ) ) {
+			return;
+		}
+
+		// 3. Simulation / Monitor Mode: Log violation and emit header but DO NOT terminate request
+		if ( 'simulate' === $waf_mode ) {
+			SuperShield_DB::log_event( 'waf_block', "[SIMULATED] $threat_type: $details", $payload, $ip );
+			if ( ! headers_sent() ) {
+				header( 'X-SuperShield-Action: Simulated-Block' );
+			}
+			return;
+		}
+
+		// 4. Active Enforcement Mode: Log event, record telemetry, and block
 		SuperShield_DB::log_event( 'waf_block', "$threat_type: $details", $payload, $ip );
 
 		// Opt-in Community Threat Telemetry
@@ -468,6 +494,55 @@ class SuperShield_WAF {
 		}
 
 		self::block_request( $threat_type, 'waf_block', $ip );
+	}
+
+	/**
+	 * Save a benign rule into learned rules catalog during WAF Learning Mode.
+	 *
+	 * @param string $threat_type
+	 * @param string $details
+	 * @param string $payload
+	 */
+	public static function learn_benign_rule( $threat_type, $details, $payload ) {
+		$learned = SuperShield_Utils::get_option( 'supershield_waf_learned_rules', array() );
+		if ( ! is_array( $learned ) ) {
+			$learned = array();
+		}
+
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) : '';
+		$key = md5( $threat_type . '|' . $uri );
+
+		$learned[ $key ] = array(
+			'threat_type' => sanitize_text_field( $threat_type ),
+			'path'        => sanitize_text_field( $uri ),
+			'learned_at'  => current_time( 'mysql' ),
+		);
+
+		// Keep up to 200 learned rules
+		if ( count( $learned ) > 200 ) {
+			$learned = array_slice( $learned, -200, 200, true );
+		}
+
+		SuperShield_Utils::update_option( 'supershield_waf_learned_rules', $learned );
+	}
+
+	/**
+	 * Check if a threat pattern has been auto-whitelisted in learning mode.
+	 *
+	 * @param string $threat_type
+	 * @param string $payload
+	 * @return bool
+	 */
+	public static function is_rule_learned( $threat_type, $payload ) {
+		$learned = SuperShield_Utils::get_option( 'supershield_waf_learned_rules', array() );
+		if ( empty( $learned ) || ! is_array( $learned ) ) {
+			return false;
+		}
+
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) : '';
+		$key = md5( $threat_type . '|' . $uri );
+
+		return isset( $learned[ $key ] );
 	}
 
 	/**
@@ -577,7 +652,7 @@ class SuperShield_WAF {
 					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
 				</div>
 				<div class="footer">
-					Protected by <strong>SuperShield Security Suite v2.2.1</strong><br>
+					Protected by <strong>SuperShield Security Suite v<?php echo esc_html( defined( 'SUPERSHIELD_VERSION' ) ? SUPERSHIELD_VERSION : '2.5.0' ); ?></strong><br>
 					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
 				</div>
 			</div>
@@ -758,7 +833,7 @@ class SuperShield_WAF {
 					<div><strong>Timestamp:</strong> <?php echo esc_html( gmdate( 'Y-m-d H:i:s' ) . ' UTC' ); ?></div>
 				</div>
 				<div class="footer">
-					Protected by <strong>SuperShield Security Suite v2.2.1</strong><br>
+					Protected by <strong>SuperShield Security Suite v<?php echo esc_html( defined( 'SUPERSHIELD_VERSION' ) ? SUPERSHIELD_VERSION : '2.5.0' ); ?></strong><br>
 					Engineering Lead: <a href="https://grwebdevs.com" target="_blank" rel="noopener">Ghulam Rasool</a> &bull; <a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">SSS.grwebdevs.com</a>
 				</div>
 			</div>
@@ -766,5 +841,48 @@ class SuperShield_WAF {
 		</html>
 		<?php
 		exit;
+	}
+
+	/**
+	 * Track 404 scans and ban automated vulnerability probers.
+	 */
+	public static function track_404_probes() {
+		if ( ! function_exists( 'is_404' ) || ! is_404() || ( function_exists( 'is_admin' ) && is_admin() ) ) {
+			return;
+		}
+
+		if ( ! SuperShield_Utils::get_option( 'prober_404_trap_enabled', 1 ) ) {
+			return;
+		}
+
+		$client_ip = SuperShield_Utils::get_client_ip();
+		if ( empty( $client_ip ) || SuperShield_IP_Manager::is_whitelisted( $client_ip ) || SuperShield_Utils::is_loopback_or_private( $client_ip ) ) {
+			return;
+		}
+
+		$transient_key = 'sss_404_' . md5( $client_ip );
+		$hits = (int) get_transient( $transient_key );
+		$hits++;
+
+		$max_404s = (int) SuperShield_Utils::get_option( 'max_404_probes', 20 );
+		if ( $hits >= $max_404s ) {
+			delete_transient( $transient_key );
+			$lockout = 86400; // 24 hours
+			SuperShield_DB::block_ip(
+				$client_ip,
+				"404 Prober Trap: Exceeded {$max_404s} 404 errors in 60s (vulnerability scan)",
+				'bot',
+				$lockout
+			);
+			SuperShield_DB::log_event(
+				'waf_block',
+				"404 Scanner Trapped: {$hits} non-existent endpoint probes",
+				isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '',
+				$client_ip
+			);
+			self::block_request( '404 Vulnerability Prober Trap', 'prober_blocked', $client_ip );
+		} else {
+			set_transient( $transient_key, $hits, 60 );
+		}
 	}
 }

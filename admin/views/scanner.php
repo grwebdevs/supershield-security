@@ -52,20 +52,31 @@ $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-
 
 	<!-- Detected Threats & Forensic Remediation -->
 	<div class="supershield-panel">
-		<div class="supershield-panel-header">
-			<h2>Detected Threats & Surgical Remediation (<?php echo count( $active_issues ); ?>)</h2>
+		<div class="supershield-panel-header" style="flex-wrap:wrap; gap:10px;">
+			<h2>Active Threat Findings (<?php echo esc_html( count( $active_issues ) ); ?> Unresolved)</h2>
+			<?php if ( ! empty( $active_issues ) ) : ?>
+				<div style="display:flex; gap:8px; align-items:center;">
+					<button type="button" id="btn-bulk-disinfect" class="btn-shield-primary" style="font-size:12px; padding:6px 12px;">
+						<span class="dashicons dashicons-shield" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> Bulk Disinfect Selected
+					</button>
+					<button type="button" id="btn-bulk-ignore" class="btn-shield-secondary" style="font-size:12px; padding:6px 12px;">
+						Mark Ignored
+					</button>
+				</div>
+			<?php endif; ?>
 		</div>
 
 		<?php if ( empty( $active_issues ) ) : ?>
-			<div style="padding: 45px 20px; text-align: center; background: var(--sss-success-subtle); border-radius: 8px; border: 1px solid var(--sss-success-border);">
-				<span class="dashicons dashicons-yes-alt" style="font-size:42px; width:42px; height:42px; color:var(--sss-success); margin-bottom:8px;"></span>
-				<h3 style="margin: 0 0 6px 0; color: var(--sss-success); font-size: 18px; font-weight:700;">Clean Bill of Health!</h3>
-				<p style="margin: 0; font-size: 13px; color: var(--sss-text-secondary);">Zero stealth droppers, altered core files, unauthorized administrators, or encrypted payloads detected.</p>
+			<div style="padding: 40px 20px; text-align: center;">
+				<span class="dashicons dashicons-yes-alt" style="font-size: 48px; width: 48px; height: 48px; color: var(--sss-success); margin-bottom: 12px;"></span>
+				<h3 style="color: var(--sss-text-primary); margin: 0 0 6px 0;">No Active Threats Detected</h3>
+				<p style="color: var(--sss-text-muted); margin: 0; font-size: 14px;">Your files, media uploads, database options, and installed components match official integrity checksums.</p>
 			</div>
 		<?php else : ?>
 			<table class="supershield-table">
 				<thead>
 					<tr>
+						<th style="width:30px;"><input type="checkbox" id="check-all-issues" title="Select All"></th>
 						<th>Severity</th>
 						<th>Classification</th>
 						<th>Location / Target</th>
@@ -77,17 +88,28 @@ $scan_btn_html = '<button type="button" id="btn-start-security-scan" class="btn-
 				<tbody>
 					<?php foreach ( $active_issues as $issue ) : ?>
 						<tr id="issue-row-<?php echo esc_attr( $issue->id ); ?>">
+							<td><input type="checkbox" class="issue-checkbox" value="<?php echo esc_attr( $issue->id ); ?>"></td>
 							<td>
 								<span class="badge-tag <?php echo esc_attr( $issue->severity ); ?>">
 									<?php echo esc_html( strtoupper( $issue->severity ) ); ?>
 								</span>
 							</td>
-							<td><code><?php echo esc_html( $issue->issue_type ); ?></code></td>
+							<td>
+								<?php if ( 'cve_vulnerability' === $issue->issue_type ) : ?>
+									<span class="badge-tag critical" style="background:#fee2e2; color:#b91c1c;">CVE Flaw</span>
+								<?php else : ?>
+									<code><?php echo esc_html( $issue->issue_type ); ?></code>
+								<?php endif; ?>
+							</td>
 							<td><strong style="word-break: break-all; color:var(--sss-text-primary); font-size:12px;"><?php echo esc_html( $issue->file_path ); ?></strong></td>
 							<td><span style="font-size:11px; color:var(--sss-brand); font-family:monospace;"><?php echo esc_html( $issue->signature_name ); ?></span></td>
 							<td style="font-size:13px; color:var(--sss-text-secondary);"><?php echo esc_html( $issue->details ); ?></td>
 							<td>
-								<?php if ( 'core_modified' === $issue->issue_type ) : ?>
+								<?php if ( 'cve_vulnerability' === $issue->issue_type ) : ?>
+									<a href="<?php echo esc_url( admin_url( 'plugins.php' ) ); ?>" class="btn-shield-primary" style="padding:6px 12px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+										<span class="dashicons dashicons-update" style="font-size:13px; width:13px; height:13px; margin-top:2px;"></span> Update Component
+									</a>
+								<?php elseif ( 'core_modified' === $issue->issue_type ) : ?>
 									<button type="button" class="btn-shield-primary btn-restore-core" data-id="<?php echo esc_attr( $issue->id ); ?>" data-path="<?php echo esc_attr( $issue->file_path ); ?>" style="padding:6px 12px; font-size:12px;">
 										Restore Core Diff
 									</button>

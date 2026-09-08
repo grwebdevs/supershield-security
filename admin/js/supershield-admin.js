@@ -587,6 +587,8 @@
 				restoreButton($btn);
 				showAlert('Could not contact GitHub API.', false);
 			});
+		});
+
 		// 12. Send Test Security Alert Email
 		$('#btn-send-test-alert').on('click', function(e) {
 			e.preventDefault();
@@ -613,6 +615,221 @@
 				$feedback.text('❌ Server communication timeout.').css('color', '#ef4444');
 				showAlert('Server communication timeout while sending mail.', false);
 			});
+		});
+
+		// 13. Discord Webhook Test Dispatch
+		$('#btn-test-discord-webhook').on('click', function(e) {
+			e.preventDefault();
+
+			var $btn = $(this);
+			var webhookUrl = $('#discord_webhook_url').length ? $('#discord_webhook_url').val().trim() : '';
+
+			if (!webhookUrl) {
+				showAlert('Please enter a Discord Webhook URL first.', false);
+				return;
+			}
+
+			setButtonLoading($btn, 'Connecting...');
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_test_discord',
+				nonce: supershield_vars.nonce,
+				webhook_url: webhookUrl
+			}, function(response) {
+				restoreButton($btn);
+				if (response.success) {
+					showAlert(response.data.message || 'Discord Webhook test notification transmitted successfully!', true);
+				} else {
+					showAlert(response.data.message || 'Failed to dispatch Discord notification.', false);
+				}
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Server communication timeout while connecting to Discord.', false);
+			});
+		});
+
+		// 14. Scanner Bulk Selection & Action Handlers
+		$('#check-all-issues').on('change', function() {
+			var isChecked = $(this).is(':checked');
+			$('.issue-checkbox').prop('checked', isChecked);
+		});
+
+		function getSelectedIssueIds() {
+			var ids = [];
+			$('.issue-checkbox:checked').each(function() {
+				var val = $(this).val();
+				if (val) {
+					ids.push(val);
+				}
+			});
+			return ids;
+		}
+
+		$('#btn-bulk-disinfect').on('click', function(e) {
+			e.preventDefault();
+			var ids = getSelectedIssueIds();
+			if (!ids.length) {
+				showAlert('Please select at least one threat finding to disinfect.', false);
+				return;
+			}
+
+			if (!confirm('Execute Bulk Disinfection on ' + ids.length + ' selected threats? SuperShield will safely backup and remediate each item.')) {
+				return;
+			}
+
+			var $btn = $(this);
+			setButtonLoading($btn, 'Disinfecting ' + ids.length + '...');
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_bulk_action',
+				nonce: supershield_vars.nonce,
+				bulk_action: 'clean',
+				issue_ids: ids
+			}, function(response) {
+				restoreButton($btn);
+				if (response.success) {
+					showAlert(response.data.message || 'Bulk disinfection completed successfully!', true);
+					$.each(ids, function(i, id) {
+						$('#issue-row-' + id).fadeOut(350, function() { $(this).remove(); });
+					});
+				} else {
+					showAlert(response.data.message || 'Bulk disinfection encountered an error.', false);
+				}
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Server error occurred during bulk disinfection.', false);
+			});
+		});
+
+		$('#btn-bulk-ignore').on('click', function(e) {
+			e.preventDefault();
+			var ids = getSelectedIssueIds();
+			if (!ids.length) {
+				showAlert('Please select at least one threat finding to ignore.', false);
+				return;
+			}
+
+			if (!confirm('Mark ' + ids.length + ' selected issues as Ignored?')) {
+				return;
+			}
+
+			var $btn = $(this);
+			setButtonLoading($btn, 'Updating...');
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_bulk_action',
+				nonce: supershield_vars.nonce,
+				bulk_action: 'ignore',
+				issue_ids: ids
+			}, function(response) {
+				restoreButton($btn);
+				if (response.success) {
+					showAlert(response.data.message || 'Issues marked as ignored.', true);
+					$.each(ids, function(i, id) {
+						$('#issue-row-' + id).fadeOut(350, function() { $(this).remove(); });
+					});
+				} else {
+					showAlert(response.data.message || 'Failed to update issues.', false);
+				}
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Server error while updating issues.', false);
+			});
+		});
+
+		// 15. Live Traffic AJAX Streaming, Search & Pagination
+		var trafficPage = 1;
+		var trafficStreamTimer = null;
+		var trafficSearchTimer = null;
+
+		function reloadTrafficStream(page) {
+			var $tbody = $('#traffic-tbody');
+			if (!$tbody.length) return;
+
+			if (page) {
+				trafficPage = page;
+			}
+
+			var searchVal = $('#traffic-search-input').length ? $('#traffic-search-input').val().trim() : '';
+			var filterVal = $('#traffic-filter-select').length ? $('#traffic-filter-select').val() : '';
+
+			$('#traffic-pulse-indicator').show();
+
+			$.post(supershield_vars.ajax_url, {
+				action: 'supershield_fetch_live_traffic',
+				nonce: supershield_vars.nonce,
+				search: searchVal,
+				filter_type: filterVal,
+				page_num: trafficPage
+			}, function(response) {
+				$('#traffic-pulse-indicator').hide();
+				if (response.success && response.data) {
+					$tbody.html(response.data.html);
+					trafficPage = response.data.page;
+					var totalPages = Math.max(1, response.data.total_pages || 1);
+					var totalRows = response.data.total_rows || 0;
+
+					$('#traffic-page-indicator').text('Page ' + trafficPage + ' of ' + totalPages);
+					$('#traffic-count-info').text('Found ' + totalRows + ' event(s)');
+					$('#btn-traffic-prev').prop('disabled', trafficPage <= 1);
+					$('#btn-traffic-next').prop('disabled', trafficPage >= totalPages);
+				}
+			}).fail(function() {
+				$('#traffic-pulse-indicator').hide();
+			});
+		}
+
+		// Prevent regular form submit if AJAX is active
+		$('#traffic-filter-select').closest('form').on('submit', function(e) {
+			if ($('#traffic-tbody').length) {
+				e.preventDefault();
+				trafficPage = 1;
+				reloadTrafficStream(1);
+			}
+		});
+
+		$('#traffic-filter-select').on('change', function(e) {
+			if ($('#traffic-tbody').length) {
+				e.preventDefault();
+				trafficPage = 1;
+				reloadTrafficStream(1);
+			}
+		});
+
+		$('#traffic-search-input').on('keyup input', function() {
+			if (trafficSearchTimer) {
+				clearTimeout(trafficSearchTimer);
+			}
+			trafficSearchTimer = setTimeout(function() {
+				trafficPage = 1;
+				reloadTrafficStream(1);
+			}, 350);
+		});
+
+		$('#btn-traffic-prev').on('click', function(e) {
+			e.preventDefault();
+			if (trafficPage > 1) {
+				reloadTrafficStream(trafficPage - 1);
+			}
+		});
+
+		$('#btn-traffic-next').on('click', function(e) {
+			e.preventDefault();
+			reloadTrafficStream(trafficPage + 1);
+		});
+
+		$('#traffic-auto-refresh-toggle').on('change', function() {
+			var isStreaming = $(this).is(':checked');
+			if (trafficStreamTimer) {
+				clearInterval(trafficStreamTimer);
+				trafficStreamTimer = null;
+			}
+			if (isStreaming) {
+				reloadTrafficStream();
+				trafficStreamTimer = setInterval(function() {
+					reloadTrafficStream();
+				}, 10000);
+			}
 		});
 
 	});
