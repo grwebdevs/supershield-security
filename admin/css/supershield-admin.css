@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SuperShield Security — Enterprise Cybersecurity Suite Stylesheet
  * Handcrafted Light Theme & Modern SaaS Console
  * Author: Ghulam Rasool (Founder & Lead Security Engineer, grwebdevs.com)
@@ -852,6 +852,29 @@ input:checked + .slider:before {
 	color: #ffffff !important;
 	border-color: #dc2626 !important;
 	text-decoration: none !important;
+}
+
+.btn-shield-primary:disabled,
+.btn-shield-secondary:disabled,
+.btn-shield-danger:disabled {
+	opacity: 0.65 !important;
+	cursor: not-allowed !important;
+	box-shadow: none !important;
+}
+
+@keyframes ss-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.ss-spin {
+	display: inline-block !important;
+	animation: ss-spin 1s linear infinite !important;
+	vertical-align: middle !important;
 }
 
 /* ==========================================================================

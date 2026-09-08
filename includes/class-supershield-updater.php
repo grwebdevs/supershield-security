@@ -17,8 +17,8 @@ class SuperShield_Updater {
 	/**
 	 * Official GitHub Repository endpoint.
 	 */
-	const GITHUB_REPO = 'ghulamrasool/supershield-security';
-	const GITHUB_API_URL = 'https://api.github.com/repos/ghulamrasool/supershield-security/releases/latest';
+	const GITHUB_REPO = 'grwebdevs/supershield-security';
+	const GITHUB_API_URL = 'https://api.github.com/repos/grwebdevs/supershield-security/releases/latest';
 	const CLOUD_PROXY_URL = 'https://SSS.grwebdevs.com/api/v1/updates';
 
 	/**
@@ -189,8 +189,8 @@ class SuperShield_Updater {
 		);
 
 		$info->banners = array(
-			'low'  => 'https://raw.githubusercontent.com/ghulamrasool/supershield-security/main/assets/banner-772x250.png',
-			'high' => 'https://raw.githubusercontent.com/ghulamrasool/supershield-security/main/assets/banner-1544x500.png',
+			'low'  => 'https://raw.githubusercontent.com/grwebdevs/supershield-security/main/assets/banner-772x250.png',
+			'high' => 'https://raw.githubusercontent.com/grwebdevs/supershield-security/main/assets/banner-1544x500.png',
 		);
 
 		return $info;

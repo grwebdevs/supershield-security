@@ -145,8 +145,8 @@ class SuperShield_Login_Security {
 	/**
 	 * Replace verbose login errors with a safe generic notice.
 	 *
-	 * @param string $error
-	 * @return string
+	 * @param string|WP_Error $error
+	 * @return string|WP_Error
 	 */
 	public static function obfuscate_login_errors( $error ) {
 		if ( empty( $error ) ) {
@@ -163,10 +163,25 @@ class SuperShield_Login_Security {
 			'AUTHENTICATION REQUIRED',
 			'TEMPORARILY LOCKED',
 			'INVALID SECURITY CODE',
+			'Please enter your 6-digit TOTP code',
 		);
 
+		if ( is_wp_error( $error ) ) {
+			$err_code = (string) $error->get_error_code();
+			$err_msg  = (string) $error->get_error_message();
+
+			foreach ( $preserved_keywords as $keyword ) {
+				if ( false !== stripos( $err_code, $keyword ) || false !== stripos( $err_msg, $keyword ) ) {
+					return $error;
+				}
+			}
+
+			return new WP_Error( 'invalid_credentials', 'Invalid username or password.' );
+		}
+
+		$error_str = (string) $error;
 		foreach ( $preserved_keywords as $keyword ) {
-			if ( strpos( $error, $keyword ) !== false ) {
+			if ( false !== stripos( $error_str, $keyword ) ) {
 				return $error;
 			}
 		}

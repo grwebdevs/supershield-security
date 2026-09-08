@@ -60,7 +60,7 @@
 * **Layer 8:** Stealth dropper and hidden dot file execution denial.
 
 ### 5. GitHub Releases Auto-Updater & Anti-Tamper Shield
-* **GitHub Releases API Client:** Automated background update detection and 1-click upgrades directly from Ghulam Rasool's repository (`github.com/ghulamrasool/supershield-security`).
+* **GitHub Releases API Client:** Automated background update detection and 1-click upgrades directly from Ghulam Rasool's repository (`github.com/grwebdevs/supershield-security`).
 * **HMAC-SHA256 Cryptographic Self-Integrity:** Continuously verifies plugin PHP files against a signed manifest to block unauthorized tampering.
 * **MU Watchdog:** Persistent Must-Use watchdog protecting the plugin against unauthorized deletion or deactivation.
 

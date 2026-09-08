@@ -589,7 +589,7 @@ gantt
 
 #### Directive 3: GitHub Releases Update Engine
 *   Implement `SuperShield_Updater` inside `includes/class-supershield-updater.php`.
-*   Hook into `pre_set_site_transient_update_plugins` to query `https://api.github.com/repos/ghulamrasool/supershield-security/releases/latest` (or `SSS.grwebdevs.com/api/v1/updates`).
+*   Hook into `pre_set_site_transient_update_plugins` to query `https://api.github.com/repos/grwebdevs/supershield-security/releases/latest` (or `SSS.grwebdevs.com/api/v1/updates`).
 *   Hook into `plugins_api` to render the native WordPress changelog modal with full Markdown parsing.
 *   Ensure smooth 1-click update installations directly from the standard WordPress `Plugins` and `Dashboard > Updates` screens.
 

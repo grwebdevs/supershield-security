@@ -114,7 +114,9 @@ $login_events = $wpdb->get_results(
 					</div>
 
 					<div style="margin-top: 24px;">
-						<button type="submit" class="btn-shield-primary">Save Login Defense Settings</button>
+						<button type="submit" class="btn-shield-primary">
+							<span class="dashicons dashicons-lock" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Login Defense Settings
+						</button>
 					</div>
 				</div>
 			</form>

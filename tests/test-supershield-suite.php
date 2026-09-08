@@ -306,6 +306,7 @@ class MockWPDB {
 	public $logged_events = array();
 	public $blocked_ips = array();
 	public $scan_issues = array();
+	public $insert_id = 1;
 	public $mock_posts = array(
 		501 => array(
 			'ID' => 501,
@@ -531,6 +532,7 @@ try {
 assert_test( $early_waf_safe, 'WAF executes safely early on plugins_loaded without pluggable fatal error' );
 
 // 5.2 SQLi with comments (UNION/**/SELECT)
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array( 'id' => '1 UNION/**/SELECT 1,2,user_pass FROM wp_users' );
 try {
@@ -539,6 +541,7 @@ try {
 assert_test( count( $wpdb->logged_events) > $initial_events, 'WAF detects and blocks UNION/**/SELECT comments SQLi' );
 
 // 5.3 Boolean SQLi (1 OR 1=1)
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array( 'filter' => "1 OR 1=1" );
 try {
@@ -547,6 +550,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks 1 OR 1=1 boolean SQLi' );
 
 // 5.4 Sensitive file probing (/.env?v=1)
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array();
 $_SERVER['REQUEST_URI'] = '/.env?v=1';
@@ -556,6 +560,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks /.env?v=1 file probing with query string' );
 
 // 5.5 XSS with unquoted event handler
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_SERVER['REQUEST_URI'] = '/';
 $_GET = array( 'q' => '<img src=x onerror=alert(1)>' );
@@ -565,6 +570,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks unquoted onerror XSS' );
 
 // 5.6 Directory Traversal
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array( 'page' => '../wp-config.php' );
 try {
@@ -573,6 +579,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks single ../ directory traversal' );
 
 // 5.7 Bad Bot Scanner User-Agent
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array();
 $_SERVER['HTTP_USER_AGENT'] = 'wpscan v3.8.22';
@@ -580,6 +587,7 @@ try {
 	SuperShield_WAF::inspect_request();
 } catch ( Throwable $e ) {}
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks WPScan bot user agent' );
+$_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0';
 
 // 5.8 SSRF Interception (Layered metadata and intranet blocking)
 $ssrf_aws = SuperShield_WAF::intercept_ssrf( false, array(), 'http://169.254.169.254/latest/meta-data/' );
@@ -620,6 +628,7 @@ assert_test( $upload_blocked, 'WAF inspect_uploaded_files neutralizes dangerous 
 $_FILES = array();
 
 // 5.10 PHP Object Injection / Deserialization Gadgets
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_POST = array( 'serialized_payload' => 'O:8:"stdClass":1:{s:4:"test";s:3:"bad";}' );
 try {
@@ -628,6 +637,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks PHP Object Injection serialized payload gadget' );
 
 // 5.11 HTTP Response Splitting / CRLF Header Injection
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array( 'redir' => "index.php%0d%0aSet-Cookie: evil_sess=1" );
 $_POST = array();
@@ -637,6 +647,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF detects and blocks HTTP Response Splitting / CRLF header injection' );
 
 // 5.12 Nested Multi-Decode (%252e%252e%252f)
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array( 'path' => '%252e%252e%252f%252e%252e%252fetc%2fpasswd' );
 try {
@@ -645,6 +656,7 @@ try {
 assert_test( count( $wpdb->logged_events ) > $initial_events, 'WAF normalizes and blocks nested multi-encoded traversal payload' );
 
 // 5.13 REQUEST_PATH Traversal in URI Path without Query String
+$wpdb->blocked_ips = array();
 $initial_events = count( $wpdb->logged_events );
 $_GET = array();
 $_SERVER['REQUEST_URI'] = '/api/v1/../../../../wp-config.php';
@@ -932,8 +944,8 @@ $fake_transient = (object) array( 'response' => array() );
 set_transient( 'supershield_latest_release_cache', array(
 	'version'      => '2.1.0',
 	'tag_name'     => 'v2.1.0',
-	'download_url' => 'https://github.com/ghulamrasool/supershield-security/releases/download/v2.1.0/supershield-security.zip',
-	'html_url'     => 'https://github.com/ghulamrasool/supershield-security/releases/tag/v2.1.0',
+	'download_url' => 'https://github.com/grwebdevs/supershield-security/releases/download/v2.1.0/supershield-security.zip',
+	'html_url'     => 'https://github.com/grwebdevs/supershield-security/releases/tag/v2.1.0',
 	'body'         => 'Security updates and improvements',
 	'published_at' => current_time( 'mysql' ),
 ), 3600 );

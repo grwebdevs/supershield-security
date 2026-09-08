@@ -166,7 +166,9 @@ $uploads_writable = is_writable( $upload_dir['basedir'] );
 					</div>
 
 					<div style="margin-top: 24px;">
-						<button type="submit" class="btn-shield-primary">Apply Hardening Changes</button>
+						<button type="submit" class="btn-shield-primary">
+							<span class="dashicons dashicons-shield" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Apply Hardening Changes
+						</button>
 					</div>
 				</div>
 			</div>

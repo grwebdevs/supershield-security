@@ -145,14 +145,16 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 					</div>
 
 					<div style="margin-top: 24px;">
-						<button type="submit" class="btn-shield-primary">Save Firewall & GeoIP Settings</button>
+						<button type="submit" class="btn-shield-primary">
+							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Firewall &amp; GeoIP Settings
+						</button>
 					</div>
 				</div>
 
 				<!-- Blocked IPs Management -->
 				<div class="supershield-panel">
 					<div class="supershield-panel-header">
-						<h2>Currently Blocked IP Addresses (<?php echo count( $blocked_ips ); ?>)</h2>
+						<h2>Currently Blocked IP Addresses (<span id="blocked-ips-count"><?php echo count( $blocked_ips ); ?></span>)</h2>
 					</div>
 
 					<?php if ( empty( $blocked_ips ) ) : ?>
@@ -194,9 +196,14 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 					</div>
 
 					<div style="margin-bottom: 20px;">
-						<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:13px;">Whitelisted IPs (One per line):</label>
+						<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+							<label style="font-weight:600; color:var(--sss-text-primary); font-size:13px;">Whitelisted IPs (One per line):</label>
+							<button type="button" id="btn-whitelist-current-ip" class="btn-shield-secondary" style="padding:2px 8px; font-size:11px;" data-ip="<?php echo esc_attr( SuperShield_Utils::get_client_ip() ); ?>" title="Add your current IP to whitelist">
+								+ Whitelist My IP
+							</button>
+						</div>
 						<p style="font-size:12px; color:var(--sss-text-secondary); margin-top:0;">These IPs or CIDR subnets bypass all firewall rules and login lockouts.</p>
-						<textarea name="ip_whitelist" rows="5" class="large-text" style="font-family:monospace; width:100%;"><?php
+						<textarea name="ip_whitelist" id="ip-whitelist-textarea" rows="5" class="large-text" style="font-family:monospace; width:100%; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px;"><?php
 							$whitelist = isset( $settings['ip_whitelist'] ) ? (array) $settings['ip_whitelist'] : array();
 							echo esc_textarea( implode( "\n", $whitelist ) );
 						?></textarea>
@@ -206,14 +213,16 @@ $active_countries = isset( $settings['geoip_countries'] ) ? (array) $settings['g
 					<div>
 						<label style="display:block; font-weight:600; margin-bottom:6px; color:var(--sss-text-primary); font-size:13px;">Blacklisted IPs (One per line):</label>
 						<p style="font-size:12px; color:var(--sss-text-secondary); margin-top:0;">Permanently forbidden from connecting to this website.</p>
-						<textarea name="ip_blacklist" rows="5" class="large-text" style="font-family:monospace; width:100%;"><?php
+						<textarea name="ip_blacklist" rows="5" class="large-text" style="font-family:monospace; width:100%; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px;"><?php
 							$blacklist = isset( $settings['ip_blacklist'] ) ? (array) $settings['ip_blacklist'] : array();
 							echo esc_textarea( implode( "\n", $blacklist ) );
 						?></textarea>
 					</div>
 
 					<div style="margin-top: 24px;">
-						<button type="submit" class="btn-shield-primary" style="width: 100%; justify-content: center;">Update Access Lists</button>
+						<button type="submit" class="btn-shield-primary" style="width: 100%; justify-content: center;">
+							<span class="dashicons dashicons-shield" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Update Access Lists
+						</button>
 					</div>
 				</div>
 			</div>

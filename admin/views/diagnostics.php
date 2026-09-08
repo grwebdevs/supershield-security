@@ -44,7 +44,7 @@ $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn
 				<div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:#f8fafc; border:1px solid var(--sss-border); border-radius:8px; margin-bottom:16px;">
 					<div>
 						<div style="font-size:14px; font-weight:600; color:var(--sss-text-primary);">Installed Version: <code>v<?php echo esc_html( SUPERSHIELD_VERSION ); ?></code></div>
-						<div style="font-size:12px; color:var(--sss-text-secondary); margin-top:4px;">Official Release Channel: <code>github.com/ghulamrasool/supershield-security</code></div>
+						<div style="font-size:12px; color:var(--sss-text-secondary); margin-top:4px;">Official Release Channel: <code>github.com/grwebdevs/supershield-security</code></div>
 					</div>
 					<div id="update-status-pill">
 						<span class="badge-tag safe">Up to Date</span>
@@ -104,7 +104,9 @@ $export_btn_html = '<button type="button" id="btn-export-diagnostics" class="btn
 					</div>
 
 					<div style="margin-top:16px;">
-						<button type="submit" class="btn-shield-primary">Save Telemetry Preference</button>
+						<button type="submit" class="btn-shield-primary">
+							<span class="dashicons dashicons-saved" style="font-size:15px; width:15px; height:15px; margin-top:2px;"></span> Save Telemetry Preference
+						</button>
 					</div>
 				</form>
 			</div>

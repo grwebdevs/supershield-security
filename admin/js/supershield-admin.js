@@ -1,6 +1,6 @@
 /**
  * SuperShield Security — Cybersecurity Command Center JS Controller
- * Version 2.0.0 Enterprise Production Suite
+ * Version 2.1.0 Enterprise Production Suite
  * Author: Ghulam Rasool (grwebdevs.com)
  */
 (function($) {
@@ -20,30 +20,95 @@
 			}, 4500);
 		}
 
+		function setButtonLoading($btn, text) {
+			if (!$btn || !$btn.length) return;
+			if (!$btn.data('original-html')) {
+				$btn.data('original-html', $btn.html());
+			}
+			$btn.prop('disabled', true).html('<span class="dashicons dashicons-update ss-spin" style="font-size:14px; width:14px; height:14px; margin-top:2px;"></span> ' + (text || 'Processing...'));
+		}
+
+		function restoreButton($btn) {
+			if (!$btn || !$btn.length) return;
+			if ($btn.data('original-html')) {
+				$btn.prop('disabled', false).html($btn.data('original-html'));
+			} else {
+				$btn.prop('disabled', false);
+			}
+		}
+
+		// Track which submit button was clicked in any settings form
+		$(document).on('click', '.supershield-settings-form button[type="submit"]', function() {
+			$(this).closest('form').data('active-submit-btn', $(this));
+		});
+
 		// 1. Settings Form AJAX Submission
 		$('.supershield-settings-form').on('submit', function(e) {
 			e.preventDefault();
 
 			var $form = $(this);
-			var $btn = $form.find('button[type="submit"]');
-			var originalText = $btn.text();
+			var $clickedBtn = $form.data('active-submit-btn') || $(document.activeElement);
+			var $submitButtons = $form.find('button[type="submit"]');
 
-			$btn.prop('disabled', true).text('Applying Shield Rules...');
+			// Save original HTML on all submit buttons in this form
+			$submitButtons.each(function() {
+				var $b = $(this);
+				if (!$b.data('original-html')) {
+					$b.data('original-html', $b.html());
+				}
+			});
+
+			// If a specific button was clicked, give it a contextual spinner and disable sibling submits
+			if ($clickedBtn && $clickedBtn.length && $clickedBtn.is('button[type="submit"]')) {
+				setButtonLoading($clickedBtn, 'Saving Changes...');
+				$submitButtons.not($clickedBtn).prop('disabled', true);
+			} else {
+				$submitButtons.each(function() {
+					setButtonLoading($(this), 'Saving Changes...');
+				});
+			}
 
 			var formData = $form.serialize();
-			formData += '&action=supershield_save_settings&nonce=' + supershield_vars.nonce;
+			formData += '&action=supershield_save_settings&nonce=' + encodeURIComponent(supershield_vars.nonce);
 
 			$.post(supershield_vars.ajax_url, formData, function(response) {
-				$btn.prop('disabled', false).text(originalText);
+				$submitButtons.each(function() {
+					restoreButton($(this));
+				});
+				$form.removeData('active-submit-btn');
+
 				if (response.success) {
 					showAlert(response.data.message || 'Settings saved successfully!', true);
 				} else {
 					showAlert(response.data.message || 'Failed to save settings.', false);
 				}
 			}).fail(function() {
-				$btn.prop('disabled', false).text(originalText);
+				$submitButtons.each(function() {
+					restoreButton($(this));
+				});
+				$form.removeData('active-submit-btn');
 				showAlert('Server communication timeout. Please try again.', false);
 			});
+		});
+
+		// Quick Whitelist Current IP Action
+		$(document).on('click', '#btn-whitelist-current-ip', function(e) {
+			e.preventDefault();
+			var ip = $(this).data('ip');
+			if (!ip) return;
+
+			var $ta = $('#ip-whitelist-textarea');
+			var current = $ta.val().trim();
+			var lines = current ? current.split('\n') : [];
+			lines = $.map(lines, function(l) { return l.trim(); });
+
+			if (lines.indexOf(ip) === -1) {
+				lines.push(ip);
+				$ta.val(lines.join('\n'));
+				showAlert('Added current IP (' + ip + ') to whitelist. Remember to click "Update Access Lists" to save.', true);
+			} else {
+				showAlert('IP ' + ip + ' is already present in your whitelist.', true);
+			}
 		});
 
 		// 2. Full Security Scan Runner
@@ -54,7 +119,7 @@
 			var $statusText = $('#scan-status-text');
 			var $progressBar = $('#scan-progress-bar');
 
-			$btn.prop('disabled', true).text('Scanning in progress...');
+			setButtonLoading($btn, 'Scanning in progress...');
 			$statusText.text('SuperShield Scanner analyzing core diffs, uploads, dot droppers, entropy, and database...');
 			$progressBar.css('width', '35%');
 
@@ -62,7 +127,7 @@
 				action: 'supershield_start_scan',
 				nonce: supershield_vars.nonce
 			}, function(response) {
-				$btn.prop('disabled', false).text('Run Full Deep Scan');
+				restoreButton($btn);
 				$progressBar.css('width', '100%');
 
 				if (response.success) {
@@ -75,7 +140,7 @@
 					$statusText.text('Scan failed: ' + (response.data.message || 'Unknown scan error.'));
 				}
 			}).fail(function() {
-				$btn.prop('disabled', false).text('Run Full Deep Scan');
+				restoreButton($btn);
 				$statusText.text('Error: Server timed out during scan. Please check PHP memory limit.');
 			});
 		});
@@ -91,7 +156,7 @@
 				return;
 			}
 
-			$btn.prop('disabled', true).text('Disinfecting...');
+			setButtonLoading($btn, 'Disinfecting...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_surgical_clean',
@@ -103,10 +168,10 @@
 					$btn.closest('tr').fadeOut(400, function() { $(this).remove(); });
 				} else {
 					alert(response.data.message || 'Disinfection failed.');
-					$btn.prop('disabled', false).text('Surgical Disinfect');
+					restoreButton($btn);
 				}
 			}).fail(function() {
-				$btn.prop('disabled', false).text('Surgical Disinfect');
+				restoreButton($btn);
 				alert('Server communication error during disinfection.');
 			});
 		});
@@ -122,7 +187,7 @@
 				return;
 			}
 
-			$btn.prop('disabled', true).text('Restoring...');
+			setButtonLoading($btn, 'Restoring...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_restore_core',
@@ -134,10 +199,10 @@
 					$btn.closest('tr').fadeOut(400, function() { $(this).remove(); });
 				} else {
 					alert(response.data.message || 'Failed to restore core file.');
-					$btn.prop('disabled', false).text('Restore Core Diff');
+					restoreButton($btn);
 				}
 			}).fail(function() {
-				$btn.prop('disabled', false).text('Restore Core Diff');
+				restoreButton($btn);
 				alert('Server communication error.');
 			});
 		});
@@ -153,7 +218,7 @@
 				return;
 			}
 
-			$btn.prop('disabled', true).text('Quarantining...');
+			setButtonLoading($btn, 'Quarantining...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_quarantine_file',
@@ -165,7 +230,7 @@
 					$btn.closest('tr').fadeOut(400, function() { $(this).remove(); });
 				} else {
 					alert(response.data.message || 'Could not quarantine file.');
-					$btn.prop('disabled', false).text('Quarantine File');
+					restoreButton($btn);
 				}
 			});
 		});
@@ -181,16 +246,28 @@
 				return;
 			}
 
+			setButtonLoading($btn, 'Unblocking...');
+
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_unblock_ip',
 				nonce: supershield_vars.nonce,
 				ip: ip
 			}, function(response) {
 				if (response.success) {
-					$btn.closest('tr').fadeOut(300, function() { $(this).remove(); });
-					showAlert('IP unblocked successfully.', true);
+					$btn.closest('tr').fadeOut(300, function() {
+						$(this).remove();
+					});
+					var $countEl = $('#blocked-ips-count');
+					if ($countEl.length) {
+						var count = parseInt($countEl.text(), 10);
+						if (!isNaN(count) && count > 0) {
+							$countEl.text(count - 1);
+						}
+					}
+					showAlert('IP ' + ip + ' unblocked successfully.', true);
 				} else {
 					alert(response.data.message || 'Failed to unblock IP.');
+					restoreButton($btn);
 				}
 			});
 		});
@@ -204,7 +281,7 @@
 			}
 
 			var $btn = $(this);
-			$btn.prop('disabled', true).text('Clearing...');
+			setButtonLoading($btn, 'Clearing...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_clear_logs',
@@ -214,7 +291,7 @@
 					location.reload();
 				} else {
 					alert(response.data.message || 'Failed to clear logs.');
-					$btn.prop('disabled', false).text('Clear Audit Trail');
+					restoreButton($btn);
 				}
 			});
 		});
@@ -224,13 +301,13 @@
 			e.preventDefault();
 
 			var $btn = $(this);
-			$btn.prop('disabled', true).text('Generating 2FA Keys...');
+			setButtonLoading($btn, 'Generating 2FA Keys...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_setup_2fa',
 				nonce: supershield_vars.nonce
 			}, function(response) {
-				$btn.prop('disabled', false).text('Re-Configure 2FA');
+				restoreButton($btn);
 				if (response.success) {
 					var data = response.data;
 					$('#2fa-qr-container').html(data.qr_svg);
@@ -261,14 +338,14 @@
 			}
 
 			var $btn = $(this);
-			$btn.prop('disabled', true).text('Verifying...');
+			setButtonLoading($btn, 'Verifying...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_verify_2fa',
 				nonce: supershield_vars.nonce,
 				code: code
 			}, function(response) {
-				$btn.prop('disabled', false).text('Verify & Activate');
+				restoreButton($btn);
 				if (response.success) {
 					alert(response.data.message || '2FA Activated!');
 					location.reload();
@@ -286,10 +363,14 @@
 				return;
 			}
 
+			var $btn = $(this);
+			setButtonLoading($btn, 'Deactivating...');
+
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_disable_2fa',
 				nonce: supershield_vars.nonce
 			}, function(response) {
+				restoreButton($btn);
 				if (response.success) {
 					alert(response.data.message || '2FA Deactivated.');
 					location.reload();
@@ -302,13 +383,13 @@
 			e.preventDefault();
 
 			var $btn = $(this);
-			$btn.prop('disabled', true).text('Compiling Report...');
+			setButtonLoading($btn, 'Compiling Report...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_export_diagnostics',
 				nonce: supershield_vars.nonce
 			}, function(response) {
-				$btn.prop('disabled', false).text('Export System Report');
+				restoreButton($btn);
 				if (response.success && response.data.markdown) {
 					$('#diagnostics-output').val(response.data.markdown);
 					showAlert('Diagnostic report generated! You can copy it below.', true);
@@ -349,7 +430,7 @@
 			if (!message) return;
 
 			var $btn = $(this).find('button[type="submit"]');
-			$btn.prop('disabled', true).text('Submitting...');
+			setButtonLoading($btn, 'Submitting...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_submit_feedback',
@@ -358,10 +439,13 @@
 				message: message,
 				email: email
 			}, function(response) {
-				$btn.prop('disabled', false).text('Submit to Engineering Lead');
+				restoreButton($btn);
 				$('#supershield-feedback-modal').fadeOut(200);
 				showAlert(response.data.message || 'Thank you for your feedback!', true);
 				$('#feedback-message').val('');
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Failed to submit feedback.', false);
 			});
 		});
 
@@ -370,13 +454,13 @@
 			e.preventDefault();
 
 			var $btn = $(this);
-			$btn.prop('disabled', true).text('Checking GitHub...');
+			setButtonLoading($btn, 'Checking GitHub...');
 
 			$.post(supershield_vars.ajax_url, {
 				action: 'supershield_check_updates',
 				nonce: supershield_vars.nonce
 			}, function(response) {
-				$btn.prop('disabled', false).text('Check for Updates Now');
+				restoreButton($btn);
 				if (response.success) {
 					var data = response.data;
 					if (data.has_update) {
@@ -392,6 +476,9 @@
 				} else {
 					showAlert(response.data.message || 'Check failed.', false);
 				}
+			}).fail(function() {
+				restoreButton($btn);
+				showAlert('Could not contact GitHub API.', false);
 			});
 		});
 

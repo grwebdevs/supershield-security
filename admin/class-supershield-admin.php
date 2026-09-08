@@ -333,7 +333,7 @@ class SuperShield_Admin {
 			</div>
 			<div>
 				<a href="https://SSS.grwebdevs.com" target="_blank" rel="noopener">Documentation</a> &bull;
-				<a href="https://github.com/ghulamrasool/supershield-security" target="_blank" rel="noopener">GitHub Project</a>
+				<a href="https://github.com/grwebdevs/supershield-security" target="_blank" rel="noopener">GitHub Project</a>
 			</div>
 		</div>
 		<?php
@@ -544,8 +544,9 @@ class SuperShield_Admin {
 			wp_send_json_error( array( 'message' => 'Invalid file path' ) );
 		}
 
-		$success = SuperShield_Cleaner::quarantine_file( $file_path );
-		if ( $success ) {
+		$result = SuperShield_Cleaner::quarantine_file( $file_path );
+		$is_ok = is_array( $result ) ? ! empty( $result['success'] ) : (bool) $result;
+		if ( $is_ok ) {
 			if ( ! empty( $_POST['issue_id'] ) ) {
 				$issue_id = sanitize_text_field( wp_unslash( $_POST['issue_id'] ) );
 				global $wpdb;
@@ -557,9 +558,9 @@ class SuperShield_Admin {
 					);
 				}
 			}
-			wp_send_json_success( array( 'message' => 'File safely isolated in quarantine vault.' ) );
+			wp_send_json_success( array( 'message' => ( is_array( $result ) && ! empty( $result['message'] ) ) ? $result['message'] : 'File safely isolated in quarantine vault.' ) );
 		} else {
-			wp_send_json_error( array( 'message' => 'Failed to quarantine file. Check filesystem permissions.' ) );
+			wp_send_json_error( array( 'message' => ( is_array( $result ) && ! empty( $result['message'] ) ) ? $result['message'] : 'Failed to quarantine file. Check filesystem permissions.' ) );
 		}
 	}
 

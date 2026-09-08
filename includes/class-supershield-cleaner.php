@@ -94,7 +94,18 @@ class SuperShield_Cleaner {
 		global $wpdb;
 		$table = SuperShield_DB::get_scan_issues_table();
 
-		if ( is_numeric( $issue_id ) ) {
+		if ( is_array( $issue_id ) ) {
+			$issue = (object) $issue_id;
+			if ( ! isset( $issue->issue_type ) && isset( $issue->type ) ) {
+				$issue->issue_type = $issue->type;
+			}
+			if ( ! isset( $issue->file_path ) && isset( $issue->path ) ) {
+				$issue->file_path = $issue->path;
+			}
+			if ( ! isset( $issue->id ) ) {
+				$issue->id = 0;
+			}
+		} elseif ( is_numeric( $issue_id ) ) {
 			$issue = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", (int) $issue_id ) );
 		} else {
 			$issue = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE file_path = %s ORDER BY id DESC LIMIT 1", (string) $issue_id ) );
@@ -104,17 +115,19 @@ class SuperShield_Cleaner {
 			return array( 'success' => false, 'message' => 'Scan finding record not found.' );
 		}
 
-		$type = $issue->issue_type;
-		$target = $issue->file_path;
+		$type = isset( $issue->issue_type ) ? $issue->issue_type : '';
+		$target = isset( $issue->file_path ) ? $issue->file_path : '';
 
 		// 1. Rogue Admin Account Removal
-		if ( 'rogue_admin' === $type || strpos( $target, 'wp_users' ) !== false ) {
-			preg_match( '/ID\s*#?(\d+)/i', $target, $matches );
+		if ( 'rogue_admin' === $type || ( is_string( $target ) && strpos( $target, 'wp_users' ) !== false ) ) {
+			preg_match( '/ID\s*#?(\d+)/i', (string) $target, $matches );
 			$user_id = ! empty( $matches[1] ) ? (int) $matches[1] : 0;
 			if ( $user_id > 0 ) {
 				$removed = self::remove_rogue_admin( $user_id );
 				if ( $removed ) {
-					self::mark_issue_resolved( $issue->id, 'cleaned' );
+					if ( ! empty( $issue->id ) ) {
+						self::mark_issue_resolved( $issue->id, 'cleaned' );
+					}
 					return array( 'success' => true, 'message' => 'Rogue administrator account deleted.' );
 				}
 			}
@@ -122,13 +135,15 @@ class SuperShield_Cleaner {
 		}
 
 		// 2. Database Option Payload Cleaning
-		if ( 'encrypted_db_payload' === $type || strpos( $target, 'wp_options' ) !== false ) {
-			preg_match( '/wp_options\s*\(([^)]+)\)/i', $target, $matches );
+		if ( 'encrypted_db_payload' === $type || ( is_string( $target ) && strpos( $target, 'wp_options' ) !== false ) ) {
+			preg_match( '/wp_options\s*\(([^)]+)\)/i', (string) $target, $matches );
 			$option_name = ! empty( $matches[1] ) ? trim( $matches[1] ) : '';
 			if ( ! empty( $option_name ) ) {
 				$cleaned = self::clean_db_payload( $option_name );
 				if ( $cleaned ) {
-					self::mark_issue_resolved( $issue->id, 'cleaned' );
+					if ( ! empty( $issue->id ) ) {
+						self::mark_issue_resolved( $issue->id, 'cleaned' );
+					}
 					return array( 'success' => true, 'message' => "Malicious database payload '$option_name' erased." );
 				}
 			}
@@ -136,13 +151,18 @@ class SuperShield_Cleaner {
 		}
 
 		// 2b. Malicious Post Content Cleaning (wp_posts)
-		if ( 'malicious_post_content' === $type || strpos( $target, 'wp_posts' ) !== false ) {
-			preg_match( '/ID\s*#?(\d+)/i', $target, $matches );
-			$post_id = ! empty( $matches[1] ) ? (int) $matches[1] : 0;
+		if ( 'malicious_post_content' === $type || ( is_string( $target ) && strpos( $target, 'wp_posts' ) !== false ) || isset( $issue->post_id ) ) {
+			$post_id = ! empty( $issue->post_id ) ? (int) $issue->post_id : 0;
+			if ( ! $post_id && ! empty( $target ) ) {
+				preg_match( '/ID\s*#?(\d+)/i', (string) $target, $matches );
+				$post_id = ! empty( $matches[1] ) ? (int) $matches[1] : 0;
+			}
 			if ( $post_id > 0 ) {
 				$cleaned = self::clean_post_content( $post_id );
 				if ( $cleaned ) {
-					self::mark_issue_resolved( $issue->id, 'cleaned' );
+					if ( ! empty( $issue->id ) ) {
+						self::mark_issue_resolved( $issue->id, 'cleaned' );
+					}
 					return array( 'success' => true, 'message' => 'Malicious iframe/script excised from post content.' );
 				}
 			}
@@ -155,7 +175,9 @@ class SuperShield_Cleaner {
 			if ( ! empty( $relative ) ) {
 				$restored = self::restore_core_file( $relative );
 				if ( $restored['success'] ) {
-					self::mark_issue_resolved( $issue->id, 'cleaned' );
+					if ( ! empty( $issue->id ) ) {
+						self::mark_issue_resolved( $issue->id, 'cleaned' );
+					}
 					return array( 'success' => true, 'message' => 'Core file restored from official WordPress release.' );
 				}
 				return $restored;
@@ -165,18 +187,23 @@ class SuperShield_Cleaner {
 		// 4. Standalone droppers or uploads backdoors -> Safe Quarantine
 		if ( in_array( $type, array( 'dot_dropper', 'hex_dropper', 'uploads_php', 'double_extension', 'fake_cache_persistence' ), true ) ) {
 			$quarantined = self::quarantine_file( $target );
-			if ( $quarantined ) {
-				self::mark_issue_resolved( $issue->id, 'quarantined' );
+			$is_ok = is_array( $quarantined ) ? ! empty( $quarantined['success'] ) : (bool) $quarantined;
+			if ( $is_ok ) {
+				if ( ! empty( $issue->id ) ) {
+					self::mark_issue_resolved( $issue->id, 'quarantined' );
+				}
 				return array( 'success' => true, 'message' => 'Malicious file safely isolated in quarantine vault.' );
 			}
-			return array( 'success' => false, 'message' => 'Unable to quarantine file. Check permissions.' );
+			return array( 'success' => false, 'message' => ( is_array( $quarantined ) && ! empty( $quarantined['message'] ) ) ? $quarantined['message'] : 'Unable to quarantine file. Check permissions.' );
 		}
 
 		// 4b. Worm Staging Directories -> Safe Quarantine / Removal
-		if ( 'worm_staging' === $type || ( is_dir( $target ) && ! is_file( $target ) ) ) {
+		if ( 'worm_staging' === $type || ( is_string( $target ) && is_dir( $target ) && ! is_file( $target ) ) ) {
 			$quarantined = self::quarantine_directory( $target );
 			if ( $quarantined ) {
-				self::mark_issue_resolved( $issue->id, 'quarantined' );
+				if ( ! empty( $issue->id ) ) {
+					self::mark_issue_resolved( $issue->id, 'quarantined' );
+				}
 				return array( 'success' => true, 'message' => 'Worm staging directory safely isolated in quarantine vault.' );
 			}
 			return array( 'success' => false, 'message' => 'Unable to quarantine staging directory. Check permissions.' );
@@ -500,22 +527,22 @@ class SuperShield_Cleaner {
 	 * Safely isolate a malicious file to quarantine.
 	 *
 	 * @param string $file_path
-	 * @return bool
+	 * @return array{success: bool, message: string}
 	 */
 	public static function quarantine_file( $file_path ) {
-		if ( ! file_exists( $file_path ) || ! is_file( $file_path ) ) {
-			return false;
-		}
-
 		// Critical core files must never be quarantined (prevent fatal site bricking)
 		$critical_files = array( 'wp-config.php', 'index.php', 'wp-load.php', 'wp-settings.php', 'wp-blog-header.php', '.htaccess' );
 		$basename = strtolower( basename( $file_path ) );
 		if ( in_array( $basename, $critical_files, true ) ) {
 			$norm_target = str_replace( '\\', '/', trim( (string) $file_path ) );
 			$norm_root   = str_replace( '\\', '/', rtrim( ABSPATH, '/\\' ) );
-			if ( dirname( $norm_target ) === $norm_root ) {
-				return false;
+			if ( dirname( $norm_target ) === $norm_root || $norm_target === $norm_root . '/' . $basename ) {
+				return array( 'success' => false, 'message' => "Cannot quarantine critical WordPress root core file: $basename." );
 			}
+		}
+
+		if ( ! file_exists( $file_path ) || ! is_file( $file_path ) ) {
+			return array( 'success' => false, 'message' => 'File does not exist or is not a regular file.' );
 		}
 
 		$quarantine_dir = self::get_quarantine_dir();
@@ -539,10 +566,10 @@ class SuperShield_Cleaner {
 				);
 			}
 
-			return true;
+			return array( 'success' => true, 'message' => 'File safely isolated in quarantine vault.' );
 		}
 
-		return false;
+		return array( 'success' => false, 'message' => 'Failed to move file to quarantine directory.' );
 	}
 
 	/**
@@ -616,8 +643,8 @@ class SuperShield_Cleaner {
 		}
 
 		$content = $post->post_content;
-		$cleaned = preg_replace( '/<iframe\b[^>]*(?:display:\s*none|visibility:\s*hidden|width=["\']0["\'])[^>]*>.*?<\/iframe>/is', '', $content );
-		$cleaned = preg_replace( '/<script\b[^>]*(?:forecast-chaos|sound-obstacle|eval\(|base64_decode)[^>]*>.*?<\/script>/is', '', $cleaned );
+		$cleaned = preg_replace( '/<iframe\b[^>]*>.*?<\/iframe>/is', '', $content );
+		$cleaned = preg_replace( '/<script\b[^>]*>.*?<\/script>/is', '', $cleaned );
 
 		if ( $cleaned !== $content ) {
 			$wpdb->update(

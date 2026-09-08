@@ -197,6 +197,17 @@ class SuperShield_QRCode {
 	}
 
 	/**
+	 * Alias for encode() for backwards and test compatibility.
+	 *
+	 * @param string $text
+	 * @param int    $ec_level
+	 * @return array<array<int>>
+	 */
+	public static function generate( $text, $ec_level = self::EC_L ) {
+		return self::encode( $text, $ec_level );
+	}
+
+	/**
 	 * Encode string into 2D QR matrix array (0 or 1).
 	 *
 	 * @param string $text
