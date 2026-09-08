@@ -3,7 +3,7 @@
  * Plugin Name:       SuperShield Security (SSS)
  * Plugin URI:        https://SSS.grwebdevs.com
  * Description:       Enterprise WordPress Defense-in-Depth Suite. Real-Time Intelligent WAF, Zero-False-Positive Deep Scanner with 1-Click Surgical Disinfection, 8-Layer Server Hardening, Enterprise TOTP 2FA, Offline GeoIP Blocking, and GitHub Releases Auto-Updater.
- * Version:           2.4.0
+ * Version:           2.5.0
  * Author:            Ghulam Rasool (Founder & Principal Security Engineer, grwebdevs.com)
  * Author URI:        https://grwebdevs.com
  * License:           GPL-2.0+
